@@ -1,0 +1,47 @@
+name: Deploy QuickCart
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  id-token: write   # for OIDC, if you switch to it (see docs/DEPLOY.md)
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION || 'us-east-1' }}
+
+      - name: Deploy Amplify backend
+        env:
+          COWORK_WEBHOOK_URL: ${{ secrets.COWORK_WEBHOOK_URL }}
+        run: npx ampx pipeline-deploy --branch main --app-id ${{ secrets.AMPLIFY_APP_ID }}
+
+      - name: Type-check
+        run: npx tsc --noEmit
+
+      - name: Build frontend
+        run: npm run build
+
+      # If your Amplify app is git-connected in the Amplify Console, Hosting
+      # builds/deploys the frontend itself on every push — the two steps
+      # above are then just a CI-side build sanity check. If you'd rather
+      # have THIS workflow push the built frontend too, add an
+      # `aws amplify start-deployment` step here (see docs/DEPLOY.md).

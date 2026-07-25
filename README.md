@@ -1,36 +1,68 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# QuickCart
 
-## Getting Started
+A tiny AWS Amplify Gen 2 e-commerce demo (Next.js + Lambda + DynamoDB) that
+ships its own real production bugs. Every intentional bug (10 of them — see
+[`docs/BUGS.md`](docs/BUGS.md)) fires a real error from a real Lambda, which
+flows through CloudWatch → SNS → SQS into
+[Cowork Local](../CoworkHackathon)'s Bugs Hunter tab for live AI incident
+analysis.
 
-First, run the development server:
+## Architecture
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+```mermaid
+flowchart LR
+    subgraph Frontend
+        FE[Next.js App Router]
+    end
+    subgraph Backend [AWS Amplify Gen 2]
+        API[AppSync API]
+        CO[checkout Lambda]
+        CA[catalog Lambda]
+        DDB[(DynamoDB\nProduct / Rating / Cart / Order)]
+        S3[(Audit Log S3 bucket)]
+    end
+    subgraph Observability
+        CW[CloudWatch Logs\n+ Metric Filter]
+        AL[CloudWatch Alarm]
+        SNS[(SNS Topic)]
+        SQS[(SQS Queue)]
+        LF[log-forwarder Lambda]
+    end
+    CL[Cowork Local\nBugs Hunter webhook]
+
+    FE -->|GraphQL| API --> CO & CA
+    CO & CA --> DDB
+    CO -.->|missing IAM grant, Bug #3| S3
+    CO & CA -->|errors| CW --> AL --> SNS --> SQS --> LF -->|HTTPS POST| CL
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Quickstart
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+npm install
+npx ampx sandbox            # provisions a real (disposable) backend in your AWS account
+npx tsx scripts/seed.ts      # seed ~20-30 demo products
+npm run dev                  # http://localhost:3000
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Then open `/admin/chaos` — one click per bug, each one fires the real Lambda
+path described in `docs/BUGS.md`.
 
-## Learn More
+Full deploy + CI/CD setup (GitHub Actions → AWS Amplify Hosting, wiring the
+webhook URL, etc.): see [`docs/DEPLOY.md`](docs/DEPLOY.md).
 
-To learn more about Next.js, take a look at the following resources:
+## Project layout
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```
+amplify/            Amplify Gen 2 backend (CDK under the hood)
+  backend.ts         entry point — wires auth/data/functions + monitoring
+  data/resource.ts    DynamoDB models (Product, Rating, Cart, Order) + custom
+                      checkout/getCatalog operations backed by Lambda
+  functions/          checkout (10 bugs), catalog (N+1), log-forwarder
+  monitoring.ts       CloudWatch Metric Filter -> Alarm -> SNS -> SQS (CDK)
+app/                 Next.js App Router frontend (catalog, cart, checkout,
+                     /admin/chaos "Chaos Panel")
+docs/BUGS.md         every bug: what/why/how to reproduce
+docs/DEPLOY.md       AWS credentials + CI/CD setup
+.github/workflows/   GitHub Actions: push to main -> ampx pipeline-deploy
+```

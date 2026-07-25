@@ -39,3 +39,14 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Amplify Gen 2 sandbox local state/cache.
+.amplify/
+
+# NOTE: amplify_outputs.json is intentionally NOT gitignored — a placeholder
+# is committed so `npm run build` works on a fresh clone before any deploy.
+# `ampx sandbox`/deploy overwrites it with the REAL backend config (API
+# endpoint + apiKey). Before committing after a local sandbox run, check
+# `git diff amplify_outputs.json` — don't push your personal sandbox's
+# endpoint/key as if it were the shared placeholder.
+

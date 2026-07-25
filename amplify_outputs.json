@@ -1,0 +1,17 @@
+{
+  "_comment": "Placeholder so local builds/typechecks succeed before a real deploy. Running `npx ampx sandbox` or a real Amplify deploy overwrites this file with the real backend config (API endpoint, region, API key). Do not commit the real one with live secrets checked into a public repo without considering that API key is a secret.",
+  "version": "1",
+  "auth": {
+    "user_pool_id": "PLACEHOLDER",
+    "aws_region": "us-east-1",
+    "user_pool_client_id": "PLACEHOLDER",
+    "identity_pool_id": "PLACEHOLDER"
+  },
+  "data": {
+    "url": "https://PLACEHOLDER.appsync-api.us-east-1.amazonaws.com/graphql",
+    "aws_region": "us-east-1",
+    "api_key": "PLACEHOLDER",
+    "default_authorization_type": "API_KEY",
+    "authorization_types": []
+  }
+}
