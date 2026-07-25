@@ -1,26 +1,229 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/* ---------------------------------------------------------------------------
+   Design tokens. Every colour the app uses is semantic (canvas / surface / fg
+   / accent …) and defined once per theme, so components never spell out a
+   light-or-dark variant — switching `data-theme` on <html> reskins everything.
+   --------------------------------------------------------------------------- */
+:root,
+:root[data-theme="light"] {
+  --canvas: #f6f7f9;
+  --canvas-tint: #eceff4;
+  --surface: #ffffff;
+  --elevated: #f4f6f9;
+  --line: #e2e6ec;
+  --line-strong: #cdd4de;
+  --fg: #0c1017;
+  --muted: #59636f;
+  --faint: #8b95a3;
+
+  --accent: #e2571f;
+  --accent-hover: #c84814;
+  --accent-fg: #ffffff;
+  --accent-soft: #fdf0e9;
+
+  --danger: #cf2b2b;
+  --danger-soft: #fdeeee;
+  --success: #14855a;
+  --success-soft: #e9f7f1;
+  --warning: #b26a00;
+  --warning-soft: #fdf3e3;
+
+  --ring: #e2571f;
+  --shadow-sm: 0 1px 2px rgb(12 16 23 / 0.06), 0 1px 3px rgb(12 16 23 / 0.04);
+  --shadow-md: 0 4px 12px rgb(12 16 23 / 0.07), 0 2px 4px rgb(12 16 23 / 0.04);
+  --shadow-lg: 0 18px 40px rgb(12 16 23 / 0.12), 0 4px 12px rgb(12 16 23 / 0.06);
+  --glow: 0 0 0 1px rgb(226 87 31 / 0.25), 0 8px 30px rgb(226 87 31 / 0.18);
+}
+
+:root[data-theme="dark"] {
+  --canvas: #08090d;
+  --canvas-tint: #0d1016;
+  --surface: #101319;
+  --elevated: #171b23;
+  --line: #232833;
+  --line-strong: #333a48;
+  --fg: #e8ecf3;
+  --muted: #939ead;
+  --faint: #69737f;
+
+  --accent: #ff6a2c;
+  --accent-hover: #ff8148;
+  --accent-fg: #14100c;
+  --accent-soft: #23150d;
+
+  --danger: #f4635e;
+  --danger-soft: #2a1416;
+  --success: #34d39e;
+  --success-soft: #0d211c;
+  --warning: #f7b93e;
+  --warning-soft: #241a0b;
+
+  --ring: #ff6a2c;
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.5);
+  --shadow-md: 0 6px 16px rgb(0 0 0 / 0.55);
+  --shadow-lg: 0 24px 50px rgb(0 0 0 / 0.65);
+  --glow: 0 0 0 1px rgb(255 106 44 / 0.35), 0 8px 34px rgb(255 106 44 / 0.22);
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  --color-canvas: var(--canvas);
+  --color-canvas-tint: var(--canvas-tint);
+  --color-surface: var(--surface);
+  --color-elevated: var(--elevated);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-fg: var(--accent-fg);
+  --color-accent-soft: var(--accent-soft);
+
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+
+  --shadow-card: var(--shadow-sm);
+  --shadow-card-md: var(--shadow-md);
+  --shadow-card-lg: var(--shadow-lg);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  color-scheme: light;
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--canvas);
+  color: var(--fg);
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Theme flips shouldn't strobe, but respect a reduced-motion preference. */
+@media (prefers-reduced-motion: no-preference) {
+  body,
+  body * {
+    transition-property: background-color, border-color, color, fill, stroke;
+    transition-duration: 160ms;
+    transition-timing-function: ease;
+  }
+}
+
+::selection {
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+
+:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+::-webkit-scrollbar {
+  width: 11px;
+  height: 11px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--line-strong);
+  border: 3px solid var(--canvas);
+  border-radius: 99px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--faint);
+}
+
+/* --- Chaos autopilot: the ring drawn around whatever it is about to touch --- */
+@keyframes chaos-pulse {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 3px var(--accent),
+      0 0 0 9px rgb(255 106 44 / 0.22);
+  }
+  50% {
+    box-shadow:
+      0 0 0 3px var(--accent),
+      0 0 0 15px rgb(255 106 44 / 0);
+  }
+}
+
+.chaos-target {
+  position: relative;
+  z-index: 30;
+  border-radius: 12px;
+  animation: chaos-pulse 900ms ease-in-out infinite;
+  scroll-margin: 120px;
+}
+
+@keyframes chaos-cursor-tap {
+  0% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(2.6);
+    opacity: 0;
+  }
+}
+
+.chaos-tap {
+  animation: chaos-cursor-tap 450ms ease-out forwards;
+}
+
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background: var(--elevated);
+}
+.skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgb(127 127 127 / 0.12), transparent);
+  animation: shimmer 1.4s infinite;
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.rise {
+  animation: rise 260ms ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chaos-target,
+  .skeleton::after,
+  .rise,
+  .chaos-tap {
+    animation: none !important;
+  }
 }

@@ -1,120 +1,262 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { client, getCart, getSessionId, setCart, type CartItem } from "@/lib/client";
 
-type Result = { ok: boolean; message: string } | null;
+interface Attempt {
+  ok: boolean;
+  total: number | null;
+  orderId: string | null;
+  error: string | null;
+}
 
 export default function CheckoutPage() {
   const [items, setItems] = useState<CartItem[]>([]);
   const [coupon, setCoupon] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<Result>(null);
+  const [express, setExpress] = useState(false);
+  const [sessionStale, setSessionStale] = useState(false);
+  const [inFlight, setInFlight] = useState(0);
+  const [attempts, setAttempts] = useState<Attempt[]>([]);
+  const [settled, setSettled] = useState(false);
 
-  useEffect(() => setItems(getCart()), []);
+  // One key for the whole checkout, the way a real client would mint it when
+  // the page opens. Two clicks therefore send the SAME key — and the server
+  // never checks it (bug #2). Minted after mount so the prerendered HTML and
+  // the hydrated tree agree.
+  const [idempotencyKey, setIdempotencyKey] = useState("");
+  const [sessionId, setSessionId] = useState("");
+  const pending = useRef(0);
 
-  const total = items.reduce((sum, i) => sum + i.price * i.quantity, 0);
+  useEffect(() => {
+    setItems(getCart());
+    setSessionId(getSessionId());
+    setIdempotencyKey(crypto.randomUUID());
+  }, []);
 
-  async function placeOrder(opts?: { doubleSubmit?: boolean }) {
-    setBusy(true);
-    setResult(null);
-    const idempotencyKey = crypto.randomUUID();
+  const clientTotal = items.reduce((sum, i) => sum + i.price * i.quantity, 0);
+  const busy = inFlight > 0;
+
+  async function placeOrder() {
+    // A fresh burst of clicks starts a fresh result panel.
+    if (settled) {
+      setAttempts([]);
+      setSettled(false);
+    }
+    pending.current += 1;
+    setInFlight(pending.current);
+
     const args = {
       sessionId: getSessionId(),
       items: items.map((i) => ({ productId: i.productId, quantity: i.quantity })),
       couponCode: coupon || undefined,
       idempotencyKey,
+      simulateSlowShipping: express || undefined,
+      simulateExpiredToken: sessionStale || undefined,
     };
+
+    let attempt: Attempt;
     try {
-      const calls = opts?.doubleSubmit
-        ? [client.mutations.checkout(args), client.mutations.checkout(args)]
-        : [client.mutations.checkout(args)];
-      const responses = await Promise.all(calls);
-      const okCount = responses.filter((r) => !r.errors?.length).length;
-      setResult({
-        ok: okCount > 0,
-        message: opts?.doubleSubmit
-          ? `Fired 2 concurrent checkout requests with the SAME idempotency key — ${okCount}/2 succeeded. If both succeeded, that's Bug #2 (duplicate order created).`
-          : okCount > 0
-            ? "Order placed."
-            : responses[0].errors?.map((e) => e.message).join("; ") || "Checkout failed.",
-      });
-      if (okCount > 0) {
-        setCart([]);
-        setItems([]);
+      const res = await client.mutations.checkout(args);
+      if (res.errors?.length) {
+        attempt = { ok: false, total: null, orderId: null, error: res.errors[0].message };
+      } else {
+        const data = res.data as { orderId?: string; total?: number } | null;
+        attempt = {
+          ok: true,
+          total: typeof data?.total === "number" ? data.total : null,
+          orderId: data?.orderId ?? null,
+          error: null,
+        };
       }
     } catch (err) {
-      setResult({ ok: false, message: String(err) });
-    } finally {
-      setBusy(false);
+      attempt = { ok: false, total: null, orderId: null, error: String(err) };
+    }
+
+    setAttempts((prev) => [...prev, attempt]);
+    pending.current -= 1;
+    setInFlight(pending.current);
+    if (pending.current === 0) {
+      setSettled(true);
+      if (attempt.ok) {
+        setCart([]);
+      }
     }
   }
 
+  const okCount = attempts.filter((a) => a.ok).length;
+  const lastOk = [...attempts].reverse().find((a) => a.ok) ?? null;
+  const firstErr = attempts.find((a) => !a.ok) ?? null;
+  const showResult = settled && attempts.length > 0;
+  const drift = lastOk?.total != null ? lastOk.total - clientTotal : null;
+
+  if (items.length === 0 && !showResult) {
+    return (
+      <div className="mx-auto max-w-md rounded-2xl border border-line bg-surface px-6 py-14 text-center">
+        <p className="mb-4 text-4xl" aria-hidden>
+          🧾
+        </p>
+        <p className="mb-6 text-sm text-muted">Nothing to check out — your cart is empty.</p>
+        <Link
+          href="/"
+          className="inline-block rounded-xl bg-accent px-5 py-2.5 text-sm font-semibold text-accent-fg transition hover:bg-accent-hover"
+        >
+          Browse the shop
+        </Link>
+      </div>
+    );
+  }
+
   return (
-    <div className="max-w-lg">
-      <h1 className="mb-6 text-2xl font-bold">Checkout</h1>
+    <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Checkout</h1>
+          <p className="mt-1 text-sm text-muted">
+            Session <span className="font-mono text-xs">{sessionId.slice(0, 8) || "…"}</span>
+            {sessionStale && <span className="ml-2 font-semibold text-danger">· token expired</span>}
+          </p>
+        </div>
 
-      {items.length === 0 ? (
-        <p className="text-slate-400">Nothing to check out — your cart is empty.</p>
-      ) : (
-        <div className="space-y-4">
-          <div className="rounded-xl border border-slate-200 bg-white p-4">
+        <section className="rounded-2xl border border-line bg-surface p-5 shadow-card">
+          <h2 className="mb-3 text-sm font-semibold">Order summary</h2>
+          <ul className="divide-y divide-line">
             {items.map((i) => (
-              <div key={i.productId} className="flex justify-between py-1 text-sm">
-                <span>
-                  {i.name} × {i.quantity}
+              <li key={i.productId} className="flex items-center justify-between gap-4 py-2.5 text-sm">
+                <span className="min-w-0 truncate">
+                  {i.name} <span className="text-muted">× {i.quantity}</span>
                 </span>
-                <span>${(i.price * i.quantity).toFixed(2)}</span>
-              </div>
+                <span className="shrink-0 font-medium tabular-nums">
+                  ${(i.price * i.quantity).toFixed(2)}
+                </span>
+              </li>
             ))}
-            <div className="mt-2 flex justify-between border-t border-slate-200 pt-2 font-semibold">
-              <span>Total</span>
-              <span>${total.toFixed(2)}</span>
-            </div>
+          </ul>
+          <div className="mt-3 flex items-baseline justify-between border-t border-line pt-3">
+            <span className="text-sm font-semibold">Total shown to you</span>
+            <span
+              data-chaos="client-total"
+              data-total={clientTotal}
+              className="text-xl font-bold tabular-nums"
+            >
+              ${clientTotal.toFixed(2)}
+            </span>
           </div>
+        </section>
 
+        <section className="space-y-4 rounded-2xl border border-line bg-surface p-5 shadow-card">
           <div>
-            <label className="mb-1 block text-sm font-medium">Coupon code</label>
+            <label htmlFor="coupon" className="mb-1.5 block text-sm font-semibold">
+              Coupon code
+            </label>
             <input
+              id="coupon"
+              data-chaos="coupon-input"
               value={coupon}
               onChange={(e) => setCoupon(e.target.value)}
-              placeholder="SAVE10, FLAT5, or SAVE10+FLAT5"
-              className="w-full rounded-lg border border-slate-300 px-3 py-2"
+              placeholder="SAVE10, FLAT5 — or both, comma separated"
+              className="w-full rounded-xl border border-line bg-canvas px-3.5 py-2.5 text-sm"
             />
-            <p className="mt-1 text-xs text-slate-400">
-              Try combining <code>SAVE10,FLAT5</code> — see Bug #5 (order-dependent coupon math).
+            <p className="mt-1.5 text-xs text-faint">
+              Codes are applied left to right. <code className="font-mono">SAVE10,FLAT5</code> and{" "}
+              <code className="font-mono">FLAT5,SAVE10</code> do not cost the same.
             </p>
           </div>
 
-          <button
-            disabled={busy}
-            onClick={() => placeOrder()}
-            className="w-full rounded-lg bg-slate-900 px-4 py-3 font-medium text-white hover:bg-orange-600 disabled:opacity-50"
-          >
-            {busy ? "Placing order…" : "Place order"}
-          </button>
+          <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-line bg-canvas p-3.5">
+            <input
+              data-chaos="express-shipping"
+              type="checkbox"
+              checked={express}
+              onChange={(e) => setExpress(e.target.checked)}
+              className="mt-0.5 h-4 w-4 accent-[var(--accent)]"
+            />
+            <span className="text-sm">
+              <span className="font-medium">Express shipping</span>
+              <span className="block text-xs text-muted">
+                Fetches a live carrier quote at checkout. The call can take up to 8s.
+              </span>
+            </span>
+          </label>
+        </section>
 
-          <button
-            disabled={busy}
-            onClick={() => placeOrder({ doubleSubmit: true })}
-            className="w-full rounded-lg border border-red-300 px-4 py-3 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
-          >
-            ⚡ Simulate double-click submit (Bug #2)
-          </button>
+        <span data-chaos="idempotency-key" data-key={idempotencyKey} className="sr-only">
+          {idempotencyKey}
+        </span>
+      </div>
 
-          {result && (
-            <div
-              className={`rounded-lg border px-4 py-3 text-sm ${
-                result.ok
-                  ? "border-green-200 bg-green-50 text-green-700"
-                  : "border-red-200 bg-red-50 text-red-700"
-              }`}
-            >
-              {result.message}
-            </div>
-          )}
+      <aside className="h-fit space-y-4 lg:sticky lg:top-24">
+        <div className="space-y-3 rounded-2xl border border-line bg-surface p-5 shadow-card">
+          <div className="flex items-baseline justify-between">
+            <span className="text-sm text-muted">You pay</span>
+            <span className="text-2xl font-bold tabular-nums">${clientTotal.toFixed(2)}</span>
+          </div>
+          {/* Deliberately never disabled: nothing here guards against a
+              double-submit, which is exactly bugs #1 and #2. */}
+          <button
+            data-chaos="place-order"
+            onClick={() => void placeOrder()}
+            className="w-full rounded-xl bg-accent px-4 py-3 text-sm font-semibold text-accent-fg transition hover:bg-accent-hover"
+          >
+            {busy ? `Placing order… (${inFlight} in flight)` : "Place order"}
+          </button>
+          <button
+            data-chaos="expire-session"
+            onClick={() => setSessionStale(true)}
+            className="w-full rounded-xl border border-line px-4 py-2 text-xs font-medium text-muted transition hover:border-danger hover:text-danger"
+          >
+            {sessionStale ? "Session is stale" : "Simulate an idle-timeout (expire my session)"}
+          </button>
         </div>
-      )}
+
+        {showResult && (
+          <div
+            data-chaos="order-result"
+            data-ok={okCount > 0}
+            data-ok-count={okCount}
+            data-total={lastOk?.total ?? ""}
+            data-order-id={lastOk?.orderId ?? ""}
+            className={`rise space-y-2 rounded-2xl border p-5 text-sm shadow-card ${
+              okCount > 0
+                ? "border-success/30 bg-success-soft text-success"
+                : "border-danger/30 bg-danger-soft text-danger"
+            }`}
+          >
+            <p className="font-semibold">
+              {okCount > 0
+                ? attempts.length > 1
+                  ? `${okCount} of ${attempts.length} requests created an order`
+                  : "Order confirmed"
+                : "Checkout failed"}
+            </p>
+
+            {lastOk?.total != null && (
+              <p className="tabular-nums">
+                Server charged <strong>${lastOk.total.toFixed(2)}</strong>
+                {drift != null && Math.abs(drift) > 0.0001 && (
+                  <span className="block text-xs opacity-80">
+                    page showed ${clientTotal.toFixed(2)} — off by {(drift * 100).toFixed(4)} cents
+                  </span>
+                )}
+              </p>
+            )}
+            {lastOk?.orderId && (
+              <p className="font-mono text-xs opacity-80">order {lastOk.orderId}</p>
+            )}
+            {okCount > 1 && (
+              <p className="text-xs opacity-90">
+                Both carried idempotency key {idempotencyKey.slice(0, 8)}… — duplicate charge.
+              </p>
+            )}
+            {firstErr?.error && <p className="text-xs opacity-90">{firstErr.error}</p>}
+          </div>
+        )}
+
+        <p className="px-1 text-xs leading-relaxed text-faint">
+          Every failure on this page is real backend behaviour, forwarded to Cowork Local through
+          CloudWatch.
+        </p>
+      </aside>
     </div>
   );
 }

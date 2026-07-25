@@ -1,187 +1,127 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { client, getSessionId } from "@/lib/client";
+import { useState, useSyncExternalStore } from "react";
+import { scenarios } from "@/lib/chaos-scenarios";
+import { getServerState, getState, requestRun, subscribe } from "@/lib/chaos-store";
 
-interface Product {
-  id: string;
-  name: string;
-  price: number;
-  stock: number;
-}
-
-interface BugCard {
-  id: string;
-  description: string;
-  run: (product: Product | undefined) => Promise<string>;
-}
+type Outcome = { text: string; ok: boolean; at: string };
 
 export default function ChaosPanel() {
-  const [products, setProducts] = useState<Product[]>([]);
-  const [log, setLog] = useState<string[]>([]);
-  const [busyId, setBusyId] = useState<string | null>(null);
+  const state = useSyncExternalStore(subscribe, getState, getServerState);
+  const [headlessBusy, setHeadlessBusy] = useState<string | null>(null);
+  const [outcomes, setOutcomes] = useState<Record<string, Outcome>>({});
 
-  useEffect(() => {
-    client.queries.getCatalog({}).then((res) => {
-      const items = (res.data as { items?: Product[] } | null)?.items ?? [];
-      setProducts(items);
-    });
-  }, []);
+  const running = state.runningId;
 
-  const product = products[0];
-
-  function report(bugId: string, message: string) {
-    setLog((prev) => [`[${new Date().toLocaleTimeString()}] ${bugId}: ${message}`, ...prev].slice(0, 20));
-  }
-
-  const bugs: BugCard[] = [
-    {
-      id: "#1 Oversell",
-      description: "Fires 2 concurrent checkouts for ALL remaining stock of one product.",
-      run: async (p) => {
-        if (!p) return "No product loaded yet.";
-        const args = {
-          sessionId: getSessionId(),
-          items: [{ productId: p.id, quantity: p.stock }],
-        };
-        const [a, b] = await Promise.all([
-          client.mutations.checkout(args),
-          client.mutations.checkout(args),
-        ]);
-        const okCount = [a, b].filter((r) => !r.errors?.length).length;
-        return `${okCount}/2 concurrent checkouts for all ${p.stock} unit(s) of "${p.name}" succeeded.`;
-      },
-    },
-    {
-      id: "#2 Duplicate order",
-      description: "Same idempotency key, sent twice at once — no dedupe check server-side.",
-      run: async (p) => {
-        if (!p) return "No product loaded yet.";
-        const idempotencyKey = crypto.randomUUID();
-        const args = { sessionId: getSessionId(), items: [{ productId: p.id, quantity: 1 }], idempotencyKey };
-        const [a, b] = await Promise.all([client.mutations.checkout(args), client.mutations.checkout(args)]);
-        const okCount = [a, b].filter((r) => !r.errors?.length).length;
-        return `${okCount}/2 requests with the SAME idempotency key succeeded (both = duplicate order).`;
-      },
-    },
-    {
-      id: "#3 IAM AccessDenied",
-      description: "Any normal checkout hits this — the Lambda role has no s3:PutObject on the audit bucket.",
-      run: async (p) => {
-        if (!p) return "No product loaded yet.";
-        await client.mutations.checkout({ sessionId: getSessionId(), items: [{ productId: p.id, quantity: 1 }] });
-        return "Checkout ran — check CloudWatch Logs for the AccessDenied on s3:PutObject.";
-      },
-    },
-    {
-      id: "#5 Coupon math",
-      description: "Stacks SAVE10 + FLAT5 — result depends on application order (undefined behavior).",
-      run: async (p) => {
-        if (!p) return "No product loaded yet.";
-        const res = await client.mutations.checkout({
-          sessionId: getSessionId(),
-          items: [{ productId: p.id, quantity: 3 }],
-          couponCode: "SAVE10,FLAT5",
-        });
-        return `Total returned: ${JSON.stringify(res.data)}`;
-      },
-    },
-    {
-      id: "#7 Invalid input",
-      description: "Checks out a product id that doesn't exist — unhandled exception (500).",
-      run: async () => {
-        const res = await client.mutations.checkout({
-          sessionId: getSessionId(),
-          items: [{ productId: "does-not-exist", quantity: 1 }],
-        });
-        return res.errors?.length ? `Failed as expected: ${res.errors[0].message}` : "Unexpectedly succeeded.";
-      },
-    },
-    {
-      id: "#8 Shipping timeout",
-      description: "Forces the shipping-estimate call to take 8s against a 6s Lambda timeout.",
-      run: async (p) => {
-        if (!p) return "No product loaded yet.";
-        const res = await client.mutations.checkout({
-          sessionId: getSessionId(),
-          items: [{ productId: p.id, quantity: 1 }],
-          simulateSlowShipping: true,
-        });
-        return res.errors?.length ? `Timed out as expected: ${res.errors[0].message}` : "Unexpectedly succeeded.";
-      },
-    },
-    {
-      id: "#9 Expired token",
-      description: "Simulates a stale Cognito session mid-checkout.",
-      run: async (p) => {
-        if (!p) return "No product loaded yet.";
-        const res = await client.mutations.checkout({
-          sessionId: getSessionId(),
-          items: [{ productId: p.id, quantity: 1 }],
-          simulateExpiredToken: true,
-        });
-        return res.errors?.length ? `Unauthorized as expected: ${res.errors[0].message}` : "Unexpectedly succeeded.";
-      },
-    },
-    {
-      id: "#10 N+1 catalog",
-      description: "Reloads the catalog — one Scan + one GetItem PER product for ratings.",
-      run: async () => {
-        const res = await client.queries.getCatalog({});
-        const count = (res.data as { items?: unknown[] } | null)?.items?.length ?? 0;
-        return `Reloaded ${count} products — check CloudWatch for ${count} separate rating GetItem calls.`;
-      },
-    },
-  ];
-
-  async function trigger(bug: BugCard) {
-    setBusyId(bug.id);
+  async function runHeadless(id: string) {
+    const scenario = scenarios.find((s) => s.id === id);
+    if (!scenario?.headless) return;
+    setHeadlessBusy(id);
     try {
-      const message = await bug.run(product);
-      report(bug.id, message);
+      const text = await scenario.headless();
+      setOutcomes((p) => ({ ...p, [id]: { text, ok: true, at: new Date().toLocaleTimeString() } }));
     } catch (err) {
-      report(bug.id, `threw: ${String(err)}`);
+      setOutcomes((p) => ({
+        ...p,
+        [id]: { text: String(err), ok: false, at: new Date().toLocaleTimeString() },
+      }));
     } finally {
-      setBusyId(null);
+      setHeadlessBusy(null);
     }
   }
 
   return (
-    <div>
-      <h1 className="mb-1 text-2xl font-bold">⚡ Chaos Panel</h1>
-      <p className="mb-6 text-sm text-slate-500">
-        One click per bug — each fires the real Lambda, so CloudWatch → SNS → SQS →
-        log-forwarder → Cowork Local runs exactly like it would from organic traffic. Bug #4
-        (lost cart update) and Bug #6 (rounding drift) aren&apos;t single actions — see{" "}
-        <code>docs/BUGS.md</code> for their repro steps.
-      </p>
+    <div className="space-y-8">
+      <section className="overflow-hidden rounded-3xl border border-danger/25 bg-gradient-to-br from-danger-soft to-surface p-8 sm:p-10">
+        <p className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-danger">
+          <span aria-hidden>⚡</span> Chaos panel
+        </p>
+        <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">Ten bugs, on demand</h1>
+        <p className="mt-3 max-w-2xl text-sm leading-relaxed text-muted">
+          <strong className="text-fg">Run in UI</strong> hands the browser to an autopilot: it walks
+          the real storefront, clicks the real buttons and types into the real inputs until the bug
+          happens in front of you.{" "}
+          <strong className="text-fg">Trigger</strong> skips the screen and calls the Lambda
+          directly — faster, but there is nothing to watch.
+        </p>
+        {running && (
+          <p className="mt-4 inline-flex items-center gap-2 rounded-xl bg-surface px-3.5 py-2 text-sm font-medium shadow-card">
+            <span className="h-2 w-2 animate-pulse rounded-full bg-accent" />
+            Autopilot is driving — watch the panel in the corner.
+          </p>
+        )}
+      </section>
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        {bugs.map((bug) => (
-          <div key={bug.id} className="rounded-xl border border-slate-200 bg-white p-4">
-            <h2 className="font-semibold text-red-600">{bug.id}</h2>
-            <p className="mb-3 text-sm text-slate-500">{bug.description}</p>
-            <button
-              disabled={busyId === bug.id}
-              onClick={() => trigger(bug)}
-              className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-red-600 disabled:opacity-50"
+      <div className="grid gap-4 md:grid-cols-2">
+        {scenarios.map((s) => {
+          const isRunning = running === s.id;
+          const outcome = outcomes[s.id];
+          const verdict = state.verdict?.id === s.id ? state.verdict : null;
+          return (
+            <article
+              key={s.id}
+              className={`flex flex-col rounded-2xl border bg-surface p-5 shadow-card transition ${
+                isRunning ? "border-accent shadow-card-md" : "border-line"
+              }`}
             >
-              {busyId === bug.id ? "Triggering…" : "Trigger"}
-            </button>
-          </div>
-        ))}
+              <div className="mb-2 flex items-start gap-3">
+                <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-danger-soft text-xs font-bold text-danger">
+                  {s.num}
+                </span>
+                <h2 className="pt-0.5 font-semibold leading-tight">{s.title}</h2>
+              </div>
+
+              <p className="mb-3 text-sm leading-relaxed text-muted">{s.what}</p>
+
+              <p className="mb-4 rounded-xl bg-elevated px-3.5 py-2.5 text-xs leading-relaxed text-muted">
+                <span className="font-semibold text-fg">On screen: </span>
+                {s.onScreen}
+              </p>
+
+              <div className="mt-auto flex flex-wrap gap-2">
+                <button
+                  onClick={() => requestRun(s.id)}
+                  disabled={!!running}
+                  className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-accent px-3.5 py-2.5 text-sm font-semibold text-accent-fg transition hover:bg-accent-hover disabled:opacity-40"
+                >
+                  <span aria-hidden>▶</span>
+                  {isRunning ? "Running…" : "Run in UI"}
+                </button>
+                {s.headless && (
+                  <button
+                    onClick={() => void runHeadless(s.id)}
+                    disabled={!!running || headlessBusy === s.id}
+                    className="rounded-xl border border-line px-3.5 py-2.5 text-sm font-medium text-muted transition hover:border-line-strong hover:text-fg disabled:opacity-40"
+                  >
+                    {headlessBusy === s.id ? "…" : "Trigger"}
+                  </button>
+                )}
+              </div>
+
+              {(verdict || outcome) && (
+                <p
+                  className={`rise mt-3 rounded-xl px-3.5 py-2.5 text-xs leading-relaxed ${
+                    (verdict ? verdict.ok : outcome!.ok)
+                      ? "bg-success-soft text-success"
+                      : "bg-danger-soft text-danger"
+                  }`}
+                >
+                  {verdict ? verdict.text : outcome!.text}
+                </p>
+              )}
+            </article>
+          );
+        })}
       </div>
 
-      <div className="mt-8">
-        <h2 className="mb-2 font-semibold">Activity log</h2>
-        <div className="rounded-xl border border-slate-200 bg-slate-900 p-4 font-mono text-xs text-slate-200">
-          {log.length === 0 ? (
-            <p className="text-slate-500">Nothing triggered yet.</p>
-          ) : (
-            log.map((line, i) => <p key={i}>{line}</p>)
-          )}
-        </div>
-      </div>
+      <section className="rounded-2xl border border-line bg-surface p-5">
+        <h2 className="mb-2 text-sm font-semibold">How a failure reaches Cowork Local</h2>
+        <p className="text-xs leading-relaxed text-muted">
+          Lambda logs the error → a CloudWatch metric filter matches it → the alarm fires into SNS →
+          SNS fans out to SQS → the <code className="font-mono">log-forwarder</code> Lambda posts it
+          to the Bugs Hunter webhook. Allow up to a minute for the alarm evaluation period.
+        </p>
+      </section>
     </div>
   );
 }

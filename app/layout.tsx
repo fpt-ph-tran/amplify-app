@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import Link from "next/link";
 import "./globals.css";
 import ConfigureAmplify from "./ConfigureAmplify";
+import NavBar from "./NavBar";
+import ChaosAutopilot from "./ChaosAutopilot";
+import { THEME_BOOTSTRAP } from "@/lib/theme-script";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -25,35 +27,28 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
+    // The bootstrap script sets data-theme before React hydrates, so the
+    // server-rendered html element deliberately won't match.
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      suppressHydrationWarning
+      className={`${geistSans.variable} ${geistMono.variable} h-full`}
     >
-      <body className="min-h-full flex flex-col bg-slate-50 text-slate-900">
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_BOOTSTRAP }} />
+      </head>
+      <body className="flex min-h-full flex-col">
         <ConfigureAmplify />
-        <header className="border-b border-slate-200 bg-white sticky top-0 z-10">
-          <nav className="mx-auto flex max-w-5xl items-center gap-6 px-6 py-4">
-            <Link href="/" className="text-lg font-bold tracking-tight text-orange-600">
-              🛒 QuickCart
-            </Link>
-            <Link href="/" className="text-sm font-medium text-slate-600 hover:text-slate-900">
-              Catalog
-            </Link>
-            <Link href="/cart" className="text-sm font-medium text-slate-600 hover:text-slate-900">
-              Cart
-            </Link>
-            <Link
-              href="/admin/chaos"
-              className="ml-auto text-sm font-medium text-slate-500 hover:text-red-600"
-            >
-              ⚡ Chaos Panel
-            </Link>
-          </nav>
-        </header>
-        <main className="mx-auto w-full max-w-5xl flex-1 px-6 py-8">{children}</main>
-        <footer className="border-t border-slate-200 py-6 text-center text-xs text-slate-400">
-          QuickCart demo — errors here are shipped to Cowork Local via CloudWatch → SNS → SQS.
+        <NavBar />
+        <main className="mx-auto w-full max-w-6xl flex-1 px-5 py-8 sm:px-6 sm:py-10">{children}</main>
+        <footer className="border-t border-line px-6 py-6">
+          <p className="mx-auto max-w-6xl text-center text-xs text-faint">
+            QuickCart is a demo storefront with ten deliberate production bugs — every failure here
+            is real and travels CloudWatch → SNS → SQS → Cowork Local.
+          </p>
         </footer>
+        {/* Sits outside <main> so a run survives navigation between pages. */}
+        <ChaosAutopilot />
       </body>
     </html>
   );

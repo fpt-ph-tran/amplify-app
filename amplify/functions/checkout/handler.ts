@@ -57,14 +57,21 @@ function calculateTotal(items: Array<{ price: number; quantity: number }>, coupo
   for (const item of items) {
     total += item.price * item.quantity; // float accumulation — Bug #6
   }
-  if (couponCode === "SAVE10") {
-    total = total * 0.9; // 10% off
-  }
-  if (couponCode === "FLAT5") {
-    total = total - 5; // Bug #5: applied on whatever `total` already is —
-    // stack SAVE10 + FLAT5 in different request orders and the result
-    // differs depending on which branch ran first, with no defined spec
-    // for which is "correct".
+  // Bug #5: codes are applied one after another in whatever order the customer
+  // happened to type them, each one operating on whatever `total` already is.
+  // "SAVE10,FLAT5" and "FLAT5,SAVE10" therefore bill different amounts for an
+  // identical basket, and nothing anywhere defines which one is correct.
+  const codes = (couponCode ?? "")
+    .split(",")
+    .map((c) => c.trim().toUpperCase())
+    .filter(Boolean);
+  for (const code of codes) {
+    if (code === "SAVE10") {
+      total = total * 0.9; // 10% off
+    }
+    if (code === "FLAT5") {
+      total = total - 5;
+    }
   }
   return total; // NOT rounded to cents on purpose — Bug #6
 }
@@ -146,14 +153,21 @@ export const handler: Handler<CheckoutRequest> = async (event) => {
   // deliberately NOT granted s3:PutObject on the audit bucket (see
   // amplify/backend.ts) — this call throws AccessDenied on every order,
   // exactly mirroring the reference incident this project is modeled after.
-  await s3.send(
-    new PutObjectCommand({
-      Bucket: AUDIT_BUCKET,
-      Key: `orders/${orderId}.json`,
-      Body: JSON.stringify({ orderId, sessionId, total, items: fetchedItems }),
-      ContentType: "application/json",
-    })
-  );
+  // The catch is the bug, not a fix for it: swallowing the failure is why the
+  // customer still gets a confirmation while the audit trail silently never
+  // gets written, and why nobody notices until an auditor asks.
+  try {
+    await s3.send(
+      new PutObjectCommand({
+        Bucket: AUDIT_BUCKET,
+        Key: `orders/${orderId}.json`,
+        Body: JSON.stringify({ orderId, sessionId, total, items: fetchedItems }),
+        ContentType: "application/json",
+      })
+    );
+  } catch (err) {
+    console.error("ERROR writing audit log for order", orderId, err);
+  }
 
   return { orderId, total };
 };
