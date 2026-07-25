@@ -21,7 +21,9 @@ import type * as lambdaNode from "aws-cdk-lib/aws-lambda";
  */
 export function configureMonitoring(
   scope: Construct,
-  watchedFunctions: Record<string, lambdaNode.IFunction>,
+  // Concrete `Function`, not `IFunction`: we need `.logGroup` below, which only
+  // the owned construct exposes.
+  watchedFunctions: Record<string, lambdaNode.Function>,
   forwarderFunction: lambdaNode.IFunction
 ): void {
   const topic = new sns.Topic(scope, "IncidentTopic", {
@@ -37,11 +39,11 @@ export function configureMonitoring(
   forwarderFunction.addEventSource(new sqsSubs.SqsEventSource(queue, { batchSize: 1 }));
 
   for (const [name, fn] of Object.entries(watchedFunctions)) {
-    const logGroup = logs.LogGroup.fromLogGroupName(
-      scope,
-      `${name}LogGroup`,
-      `/aws/lambda/${fn.functionName}`
-    );
+    // Reading `.logGroup` makes CDK add a custom resource that pre-creates the
+    // group during deployment. Importing `/aws/lambda/<name>` by name instead
+    // fails the stack: Lambda only creates its log group on first invocation,
+    // so at deploy time there is nothing for the metric filter to attach to.
+    const logGroup = fn.logGroup;
 
     const errorMetric = new logs.MetricFilter(scope, `${name}ErrorFilter`, {
       logGroup,

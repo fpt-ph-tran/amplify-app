@@ -1,5 +1,6 @@
 import { defineBackend } from "@aws-amplify/backend";
 import * as s3 from "aws-cdk-lib/aws-s3";
+import type * as lambda from "aws-cdk-lib/aws-lambda";
 import { RemovalPolicy } from "aws-cdk-lib";
 import { auth } from "./auth/resource";
 import { data } from "./data/resource";
@@ -49,8 +50,10 @@ ratingTable.grantReadData(backend.catalog.resources.lambda);
 configureMonitoring(
   backendStack,
   {
-    checkout: backend.checkout.resources.lambda,
-    catalog: backend.catalog.resources.lambda,
+    // Amplify types these as `IFunction`, but they are the owned constructs —
+    // configureMonitoring needs `.logGroup` off the concrete class.
+    checkout: backend.checkout.resources.lambda as lambda.Function,
+    catalog: backend.catalog.resources.lambda as lambda.Function,
   },
   backend.logForwarder.resources.lambda
 );
