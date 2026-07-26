@@ -21,15 +21,21 @@ interface CheckoutItem {
   quantity: number;
 }
 
-interface CheckoutRequest {
+interface CheckoutArguments {
   sessionId: string;
-  items: CheckoutItem[];
+  /** Declared as AWSJSON, so it can arrive already parsed or still encoded. */
+  items: CheckoutItem[] | string;
   couponCode?: string;
   idempotencyKey?: string;
   // Chaos-Panel-only flags: force a specific bug's failure mode on demand,
   // instead of relying on real timing/concurrency during a live demo.
   simulateSlowShipping?: boolean;
   simulateExpiredToken?: boolean;
+}
+
+/** AppSync's @function resolver nests the field arguments under `arguments`. */
+interface CheckoutEvent {
+  arguments: CheckoutArguments;
 }
 
 class HttpError extends Error {
@@ -76,8 +82,13 @@ function calculateTotal(items: Array<{ price: number; quantity: number }>, coupo
   return total; // NOT rounded to cents on purpose — Bug #6
 }
 
-export const handler: Handler<CheckoutRequest> = async (event) => {
-  const { sessionId, items, couponCode, idempotencyKey, simulateSlowShipping, simulateExpiredToken } = event;
+export const handler: Handler<CheckoutEvent> = async (event) => {
+  const { sessionId, couponCode, idempotencyKey, simulateSlowShipping, simulateExpiredToken } =
+    event.arguments;
+  const items: CheckoutItem[] =
+    typeof event.arguments.items === "string"
+      ? JSON.parse(event.arguments.items)
+      : event.arguments.items;
 
   // Bug #9: the Chaos Panel can force this deterministically; in real usage
   // this fires when a Cognito token has actually expired mid-checkout and

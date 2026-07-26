@@ -11,6 +11,29 @@ export const client = generateClient<Schema>();
  * off it silently yields undefined rather than throwing, which is why an empty
  * catalog looked like an empty database. Parse it before use.
  */
+export interface CheckoutInput {
+  sessionId: string;
+  items: { productId: string; quantity: number }[];
+  couponCode?: string;
+  idempotencyKey?: string;
+  simulateSlowShipping?: boolean;
+  simulateExpiredToken?: boolean;
+}
+
+/**
+ * `items` is declared `a.json()`, which becomes an AWSJSON argument — and
+ * AWSJSON travels as a JSON-ENCODED STRING. Passing the array raw makes
+ * AppSync reject the whole request with "Variable 'items' has an invalid
+ * value" before the Lambda is ever invoked, so nothing shows up in its logs
+ * and the failure looks like the backend is down. Always go through here.
+ */
+export function checkoutMutation(input: CheckoutInput) {
+  return client.mutations.checkout({
+    ...input,
+    items: JSON.stringify(input.items),
+  });
+}
+
 export function parseJson<T>(value: unknown): T | null {
   if (value == null) return null;
   if (typeof value !== "string") return value as T;

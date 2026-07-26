@@ -2,7 +2,14 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { client, getCart, getSessionId, parseJson, setCart, type CartItem } from "@/lib/client";
+import {
+  checkoutMutation,
+  getCart,
+  getSessionId,
+  parseJson,
+  setCart,
+  type CartItem,
+} from "@/lib/client";
 import { useT } from "@/lib/i18n";
 
 interface Attempt {
@@ -59,7 +66,7 @@ export default function CheckoutPage() {
 
     let attempt: Attempt;
     try {
-      const res = await client.mutations.checkout(args);
+      const res = await checkoutMutation(args);
       if (res.errors?.length) {
         attempt = { ok: false, total: null, orderId: null, error: res.errors[0].message };
       } else {

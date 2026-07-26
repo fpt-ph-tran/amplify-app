@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useSyncExternalStore } from "react";
+import { useMemo, useSyncExternalStore } from "react";
 import { en, type Dictionary, type TranslationKey } from "./en";
 import { vi } from "./vi";
 import { ja } from "./ja";
@@ -70,8 +70,8 @@ export function useLang(): Lang {
 
 export function useT(): Translate {
   const lang = useLang();
-  // Recreated only when the language actually changes.
-  return useCallback(translator(lang), [lang]);
+  // Rebuilt only when the language actually changes.
+  return useMemo(() => translator(lang), [lang]);
 }
 
 export type { TranslationKey };

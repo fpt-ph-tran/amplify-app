@@ -1,6 +1,6 @@
 "use client";
 
-import { client, getSessionId, parseJson } from "@/lib/client";
+import { checkoutMutation, client, getSessionId, parseJson } from "@/lib/client";
 import type { TranslationKey, Translate } from "@/lib/i18n";
 
 /**
@@ -126,7 +126,7 @@ export const scenarios: Scenario[] = [
       const p = await firstProduct();
       if (!p) return t("headless.noProduct");
       const args = { sessionId: getSessionId(), items: [{ productId: p.id, quantity: p.stock }] };
-      const [a, b] = await Promise.all([client.mutations.checkout(args), client.mutations.checkout(args)]);
+      const [a, b] = await Promise.all([checkoutMutation(args), checkoutMutation(args)]);
       const ok = [a, b].filter((r) => !r.errors?.length).length;
       return ok === 2 ? t("bug1.both", { stock: p.stock, name: p.name }) : t("bug1.partial", { ok });
     },
@@ -162,7 +162,7 @@ export const scenarios: Scenario[] = [
         items: [{ productId: p.id, quantity: 1 }],
         idempotencyKey: crypto.randomUUID(),
       };
-      const [a, b] = await Promise.all([client.mutations.checkout(args), client.mutations.checkout(args)]);
+      const [a, b] = await Promise.all([checkoutMutation(args), checkoutMutation(args)]);
       const ok = [a, b].filter((r) => !r.errors?.length).length;
       return ok === 2 ? t("bug2.both") : t("bug2.partial", { ok });
     },
@@ -186,7 +186,7 @@ export const scenarios: Scenario[] = [
     headless: async (t) => {
       const p = await firstProduct();
       if (!p) return t("headless.noProduct");
-      await client.mutations.checkout({ sessionId: getSessionId(), items: [{ productId: p.id, quantity: 1 }] });
+      await checkoutMutation({ sessionId: getSessionId(), items: [{ productId: p.id, quantity: 1 }] });
       return t("bug3.ok");
     },
   },
@@ -281,7 +281,7 @@ export const scenarios: Scenario[] = [
       const p = await firstProduct();
       if (!p) return t("headless.noProduct");
       const call = (code: string) =>
-        client.mutations.checkout({
+        checkoutMutation({
           sessionId: getSessionId(),
           items: [{ productId: p.id, quantity: 3 }],
           couponCode: code,
@@ -375,7 +375,7 @@ export const scenarios: Scenario[] = [
       };
     },
     headless: async (t) => {
-      const r = await client.mutations.checkout({
+      const r = await checkoutMutation({
         sessionId: getSessionId(),
         items: [{ productId: "does-not-exist", quantity: 1 }],
       });
@@ -402,7 +402,7 @@ export const scenarios: Scenario[] = [
     headless: async (t) => {
       const p = await firstProduct();
       if (!p) return t("headless.noProduct");
-      const r = await client.mutations.checkout({
+      const r = await checkoutMutation({
         sessionId: getSessionId(),
         items: [{ productId: p.id, quantity: 1 }],
         simulateSlowShipping: true,
@@ -430,7 +430,7 @@ export const scenarios: Scenario[] = [
     headless: async (t) => {
       const p = await firstProduct();
       if (!p) return t("headless.noProduct");
-      const r = await client.mutations.checkout({
+      const r = await checkoutMutation({
         sessionId: getSessionId(),
         items: [{ productId: p.id, quantity: 1 }],
         simulateExpiredToken: true,
