@@ -1,11 +1,14 @@
 # QuickCart
 
 A tiny AWS Amplify Gen 2 e-commerce demo (Next.js + Lambda + DynamoDB) that
-ships its own real production bugs. Every intentional bug (10 of them — see
-[`docs/BUGS.md`](docs/BUGS.md)) fires a real error from a real Lambda, which
-streams out of CloudWatch Logs into
+ships its own real production bugs. Each one fires a real error from a real
+Lambda, which streams out of CloudWatch Logs into
 [Cowork Local](../CoworkHackathon)'s Bugs Hunter tab for live AI incident
 analysis.
+
+The product specification lives in [`documents/`](documents/) (English,
+Vietnamese and Japanese) — that is the context the analyser is given, and it
+describes the intended behaviour only.
 
 ## Architecture
 
@@ -43,11 +46,11 @@ npx tsx scripts/seed.ts      # seed ~32 demo products (deploys seed themselves)
 npm run dev                  # http://localhost:3000
 ```
 
-Then open `/admin/chaos` — one click per bug, each one fires the real Lambda
-path described in `docs/BUGS.md`.
+Then open `/admin/chaos`. Each entry either drives the real storefront until
+the defect happens on screen, or calls the backend directly.
 
-Full deploy + CI/CD setup (GitHub Actions → AWS Amplify Hosting, wiring the
-webhook URL, etc.): see [`docs/DEPLOY.md`](docs/DEPLOY.md).
+Deploy and CI/CD notes are kept in `docs/`, which is deliberately not tracked
+in this repository — see `.gitignore`.
 
 ## Project layout
 
@@ -56,11 +59,10 @@ amplify/            Amplify Gen 2 backend (CDK under the hood)
   backend.ts         entry point — wires auth/data/functions + monitoring
   data/resource.ts    DynamoDB models (Product, Rating, Cart, Order) + custom
                       checkout/getCatalog operations backed by Lambda
-  functions/          checkout (10 bugs), catalog (N+1), log-forwarder
+  functions/          checkout, catalog, log-forwarder
   monitoring.ts       CloudWatch Logs subscription filters -> log-forwarder (CDK)
 app/                 Next.js App Router frontend (catalog, cart, checkout,
                      /admin/chaos "Chaos Panel")
-docs/BUGS.md         every bug: what/why/how to reproduce
-docs/DEPLOY.md       AWS credentials + CI/CD setup
+documents/           product specification (en/vi/ja) — the analyser's context
 .github/workflows/   GitHub Actions: push to main -> ampx pipeline-deploy
 ```
