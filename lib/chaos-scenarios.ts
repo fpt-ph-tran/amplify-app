@@ -1,6 +1,6 @@
 "use client";
 
-import { client, getSessionId } from "@/lib/client";
+import { client, getSessionId, parseJson } from "@/lib/client";
 import type { TranslationKey, Translate } from "@/lib/i18n";
 
 /**
@@ -79,7 +79,7 @@ async function toCheckoutWithOneItem(api: ChaosApi) {
 async function firstProduct(): Promise<{ id: string; name: string; stock: number } | null> {
   const res = await client.queries.getCatalog({});
   const items =
-    (res.data as { items?: { id: string; name: string; stock: number }[] } | null)?.items ?? [];
+    parseJson<{ items?: { id: string; name: string; stock: number }[] }>(res.data)?.items ?? [];
   return items[0] ?? null;
 }
 
@@ -286,8 +286,8 @@ export const scenarios: Scenario[] = [
           items: [{ productId: p.id, quantity: 3 }],
           couponCode: code,
         });
-      const a = (await call("SAVE10,FLAT5")).data as { total?: number } | null;
-      const b = (await call("FLAT5,SAVE10")).data as { total?: number } | null;
+      const a = parseJson<{ total?: number }>((await call("SAVE10,FLAT5")).data);
+      const b = parseJson<{ total?: number }>((await call("FLAT5,SAVE10")).data);
       if (typeof a?.total === "number" && typeof b?.total === "number" && a.total !== b.total) {
         return t("bug5.differ", {
           a: money(a.total),
@@ -466,7 +466,7 @@ export const scenarios: Scenario[] = [
     headless: async (t) => {
       const started = performance.now();
       const res = await client.queries.getCatalog({});
-      const products = (res.data as { items?: unknown[] } | null)?.items?.length ?? 0;
+      const products = parseJson<{ items?: unknown[] }>(res.data)?.items?.length ?? 0;
       return t("bug10.result", { products, ms: (performance.now() - started).toFixed(0) });
     },
   },

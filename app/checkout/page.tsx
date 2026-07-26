@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { client, getCart, getSessionId, setCart, type CartItem } from "@/lib/client";
+import { client, getCart, getSessionId, parseJson, setCart, type CartItem } from "@/lib/client";
 import { useT } from "@/lib/i18n";
 
 interface Attempt {
@@ -63,7 +63,7 @@ export default function CheckoutPage() {
       if (res.errors?.length) {
         attempt = { ok: false, total: null, orderId: null, error: res.errors[0].message };
       } else {
-        const data = res.data as { orderId?: string; total?: number } | null;
+        const data = parseJson<{ orderId?: string; total?: number }>(res.data);
         attempt = {
           ok: true,
           total: typeof data?.total === "number" ? data.total : null,

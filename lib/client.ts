@@ -5,6 +5,22 @@ import type { Schema } from "@/amplify/data/resource";
 
 export const client = generateClient<Schema>();
 
+/**
+ * Custom operations declared with `a.json()` map to AppSync's AWSJSON scalar,
+ * which comes back over the wire as a JSON-encoded STRING — reading `.items`
+ * off it silently yields undefined rather than throwing, which is why an empty
+ * catalog looked like an empty database. Parse it before use.
+ */
+export function parseJson<T>(value: unknown): T | null {
+  if (value == null) return null;
+  if (typeof value !== "string") return value as T;
+  try {
+    return JSON.parse(value) as T;
+  } catch {
+    return null;
+  }
+}
+
 /** A stable per-browser "session id" standing in for real auth — good enough
  * for a demo cart/checkout flow without wiring up a full login UI. */
 export function getSessionId(): string {

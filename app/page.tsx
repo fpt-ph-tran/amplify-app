@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Image from "next/image";
-import { client, addToCart } from "@/lib/client";
+import { client, addToCart, parseJson } from "@/lib/client";
 import { useT } from "@/lib/i18n";
 
 interface Product {
@@ -29,7 +29,7 @@ export default function CatalogPage() {
     const started = performance.now();
     try {
       const res = await client.queries.getCatalog({});
-      setProducts((res.data as { items?: Product[] } | null)?.items ?? []);
+      setProducts(parseJson<{ items?: Product[] }>(res.data)?.items ?? []);
     } catch (err) {
       setError(String(err));
     } finally {
