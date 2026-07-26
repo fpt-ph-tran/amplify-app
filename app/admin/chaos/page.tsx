@@ -117,9 +117,10 @@ export default function ChaosPanel() {
       <section className="rounded-2xl border border-line bg-surface p-5">
         <h2 className="mb-2 text-sm font-semibold">How a failure reaches Cowork Local</h2>
         <p className="text-xs leading-relaxed text-muted">
-          Lambda logs the error → a CloudWatch metric filter matches it → the alarm fires into SNS →
-          SNS fans out to SQS → the <code className="font-mono">log-forwarder</code> Lambda posts it
-          to the Bugs Hunter webhook. Allow up to a minute for the alarm evaluation period.
+          The Lambda logs the error → a CloudWatch Logs subscription filter matches the line and
+          ships the event itself → the <code className="font-mono">log-forwarder</code> Lambda posts
+          it to the Bugs Hunter webhook. Arrives within seconds, with the real message and stack
+          trace, one delivery per occurrence.
         </p>
       </section>
     </div>

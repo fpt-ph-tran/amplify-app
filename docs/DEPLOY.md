@@ -78,8 +78,8 @@ That's it — "cấu hình API key AWS là deploy được luôn."
 
 1. Open QuickCart, go to `/admin/chaos`.
 2. Click any bug's "Trigger" button.
-3. Within roughly a minute (CloudWatch Alarm evaluation period), an incident
-   should appear in Cowork Local's Bugs Hunter tab for this project.
+3. Within a few seconds the incident should appear in Cowork Local's Bugs
+   Hunter tab for this project, carrying the actual error message.
 4. If nothing shows up: check the `log-forwarder` Lambda's CloudWatch Logs
    first (network/URL issues log there, not silently) before touching the
-   alarm/metric-filter config.
+   subscription filters.

@@ -44,7 +44,7 @@ export default function RootLayout({
         <footer className="border-t border-line px-6 py-6">
           <p className="mx-auto max-w-6xl text-center text-xs text-faint">
             QuickCart is a demo storefront with ten deliberate production bugs — every failure here
-            is real and travels CloudWatch → SNS → SQS → Cowork Local.
+            is real and streams straight out of CloudWatch Logs to Cowork Local.
           </p>
         </footer>
         {/* Sits outside <main> so a run survives navigation between pages. */}

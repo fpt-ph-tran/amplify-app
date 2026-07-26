@@ -3,7 +3,7 @@
 A tiny AWS Amplify Gen 2 e-commerce demo (Next.js + Lambda + DynamoDB) that
 ships its own real production bugs. Every intentional bug (10 of them — see
 [`docs/BUGS.md`](docs/BUGS.md)) fires a real error from a real Lambda, which
-flows through CloudWatch → SNS → SQS into
+streams out of CloudWatch Logs into
 [Cowork Local](../CoworkHackathon)'s Bugs Hunter tab for live AI incident
 analysis.
 
@@ -22,10 +22,8 @@ flowchart LR
         S3[(Audit Log S3 bucket)]
     end
     subgraph Observability
-        CW[CloudWatch Logs\n+ Metric Filter]
-        AL[CloudWatch Alarm]
-        SNS[(SNS Topic)]
-        SQS[(SQS Queue)]
+        CW[CloudWatch Logs]
+        SF[Subscription Filter]
         LF[log-forwarder Lambda]
     end
     CL[Cowork Local\nBugs Hunter webhook]
@@ -33,7 +31,7 @@ flowchart LR
     FE -->|GraphQL| API --> CO & CA
     CO & CA --> DDB
     CO -.->|missing IAM grant, Bug #3| S3
-    CO & CA -->|errors| CW --> AL --> SNS --> SQS --> LF -->|HTTPS POST| CL
+    CO & CA -->|errors| CW --> SF -->|real log events| LF -->|HTTPS POST| CL
 ```
 
 ## Quickstart
@@ -59,7 +57,7 @@ amplify/            Amplify Gen 2 backend (CDK under the hood)
   data/resource.ts    DynamoDB models (Product, Rating, Cart, Order) + custom
                       checkout/getCatalog operations backed by Lambda
   functions/          checkout (10 bugs), catalog (N+1), log-forwarder
-  monitoring.ts       CloudWatch Metric Filter -> Alarm -> SNS -> SQS (CDK)
+  monitoring.ts       CloudWatch Logs subscription filters -> log-forwarder (CDK)
 app/                 Next.js App Router frontend (catalog, cart, checkout,
                      /admin/chaos "Chaos Panel")
 docs/BUGS.md         every bug: what/why/how to reproduce

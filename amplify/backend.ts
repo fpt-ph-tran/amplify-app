@@ -46,7 +46,7 @@ backend.catalog.addEnvironment("RATING_TABLE_NAME", ratingTable.tableName);
 productTable.grantReadData(backend.catalog.resources.lambda);
 ratingTable.grantReadData(backend.catalog.resources.lambda);
 
-// ---- CloudWatch -> SNS -> SQS -> log-forwarder -> Cowork Local ----------
+// ---- CloudWatch Logs -> log-forwarder -> Cowork Local -------------------
 configureMonitoring(
   backendStack,
   {

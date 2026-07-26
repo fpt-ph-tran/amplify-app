@@ -79,8 +79,8 @@ Vậy là xong — "cấu hình API key AWS là deploy được luôn."
 
 1. Mở QuickCart, vào `/admin/chaos`.
 2. Bấm nút "Trigger" của bất kỳ lỗi nào.
-3. Trong khoảng một phút (chu kỳ đánh giá của CloudWatch Alarm), một sự cố
-   sẽ xuất hiện ở tab Bugs Hunter của Cowork Local cho project này.
+3. Chỉ sau vài giây, sự cố sẽ xuất hiện ở tab Bugs Hunter của Cowork Local
+   cho project này, kèm theo nội dung lỗi thật.
 4. Nếu không thấy gì xuất hiện: kiểm tra CloudWatch Logs của Lambda
    `log-forwarder` trước tiên (các vấn đề network/URL đều được log ở đó,
-   không âm thầm biến mất) trước khi động vào cấu hình alarm/metric-filter.
+   không âm thầm biến mất) trước khi động vào các subscription filter.
