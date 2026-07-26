@@ -39,7 +39,7 @@ flowchart LR
 ```bash
 npm install
 npx ampx sandbox            # provisions a real (disposable) backend in your AWS account
-npx tsx scripts/seed.ts      # seed ~20-30 demo products
+npx tsx scripts/seed.ts      # seed ~32 demo products (deploys seed themselves)
 npm run dev                  # http://localhost:3000
 ```
 

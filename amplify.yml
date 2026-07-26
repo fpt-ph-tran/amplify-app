@@ -5,6 +5,11 @@ backend:
       commands:
         - npm ci
         - npx ampx pipeline-deploy --branch $AWS_BRANCH --app-id $AWS_APP_ID
+        # pipeline-deploy has just written the real amplify_outputs.json into
+        # the working directory, so the seed can talk to the backend it created.
+        # The script is idempotent — it skips once the catalog has products —
+        # and never fails the build.
+        - npx tsx scripts/seed.ts
 frontend:
   phases:
     preBuild:
