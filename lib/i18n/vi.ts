@@ -96,6 +96,12 @@ export const vi: Dictionary = {
   "chaos.running": "Đang chạy…",
   "chaos.trigger": "Trigger",
   "chaos.onScreen": "Trên màn hình:",
+  "chaos.restock": "Nạp lại tồn kho",
+  "chaos.restocking": "Đang nạp lại…",
+  "chaos.restocked": "Đã nạp lại {count} sản phẩm. Tải lại cửa hàng để xem.",
+  "chaos.restockFailed": "Không nạp lại được: {error}",
+  "chaos.restockHint":
+    "Chạy demo làm cạn tồn kho, thậm chí xuống âm. Dùng nút này giữa các buổi demo để đưa cửa hàng về trạng thái bán được.",
   "chaos.pipeline.title": "Một sự cố đi tới Cowork Local như thế nào",
   "chaos.pipeline.body":
     "Lambda ghi log lỗi → một subscription filter của CloudWatch Logs khớp dòng log đó và tự đẩy event đi → Lambda log-forwarder POST nó tới webhook của Bugs Hunter. Sự kiện tới nơi trong vài giây, kèm message và stack trace thật, mỗi lần xảy ra là một lần gửi.",

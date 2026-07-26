@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useSyncExternalStore } from "react";
+import { restockCatalog } from "@/lib/client";
 import { scenarios } from "@/lib/chaos-scenarios";
 import { getServerState, getState, requestRun, subscribe } from "@/lib/chaos-store";
 import { useT } from "@/lib/i18n";
@@ -12,6 +13,29 @@ export default function ChaosPanel() {
   const state = useSyncExternalStore(subscribe, getState, getServerState);
   const [headlessBusy, setHeadlessBusy] = useState<string | null>(null);
   const [outcomes, setOutcomes] = useState<Record<string, Outcome>>({});
+  const [restocking, setRestocking] = useState(false);
+  const [restockResult, setRestockResult] = useState<Outcome | null>(null);
+
+  async function restock() {
+    setRestocking(true);
+    setRestockResult(null);
+    try {
+      const { restocked } = await restockCatalog();
+      setRestockResult({
+        text: t("chaos.restocked", { count: restocked }),
+        ok: true,
+        at: new Date().toLocaleTimeString(),
+      });
+    } catch (err) {
+      setRestockResult({
+        text: t("chaos.restockFailed", { error: String(err) }),
+        ok: false,
+        at: new Date().toLocaleTimeString(),
+      });
+    } finally {
+      setRestocking(false);
+    }
+  }
 
   const running = state.runningId;
 
@@ -47,6 +71,30 @@ export default function ChaosPanel() {
           <p className="mt-4 inline-flex items-center gap-2 rounded-xl bg-surface px-3.5 py-2 text-sm font-medium shadow-card">
             <span className="h-2 w-2 animate-pulse rounded-full bg-accent" />
             {t("chaos.driving")}
+          </p>
+        )}
+
+        <div className="mt-6 flex flex-wrap items-center gap-3 border-t border-line pt-5">
+          <button
+            onClick={() => void restock()}
+            disabled={restocking || !!running}
+            className="inline-flex items-center gap-2 rounded-xl border border-line bg-surface px-4 py-2.5 text-sm font-semibold shadow-card transition hover:border-line-strong disabled:opacity-50"
+          >
+            <span className={restocking ? "animate-spin" : ""} aria-hidden>
+              ⟳
+            </span>
+            {restocking ? t("chaos.restocking") : t("chaos.restock")}
+          </button>
+          <p className="max-w-md text-xs leading-relaxed text-muted">{t("chaos.restockHint")}</p>
+        </div>
+
+        {restockResult && (
+          <p
+            className={`rise mt-3 inline-block rounded-xl px-3.5 py-2 text-xs font-medium ${
+              restockResult.ok ? "bg-success-soft text-success" : "bg-danger-soft text-danger"
+            }`}
+          >
+            {restockResult.text}
           </p>
         )}
       </section>

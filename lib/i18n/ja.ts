@@ -96,6 +96,12 @@ export const ja: Dictionary = {
   "chaos.running": "実行中…",
   "chaos.trigger": "Trigger",
   "chaos.onScreen": "画面上の動き:",
+  "chaos.restock": "在庫を補充する",
+  "chaos.restocking": "補充しています…",
+  "chaos.restocked": "{count} 件の商品を補充しました。ショップを再読み込みしてご確認ください。",
+  "chaos.restockFailed": "補充できませんでした: {error}",
+  "chaos.restockHint":
+    "実行するたびに在庫が減り、マイナスになることもあります。デモの合間にこれを使って、販売可能な状態に戻してください。",
   "chaos.pipeline.title": "障害が Cowork Local に届くまで",
   "chaos.pipeline.body":
     "Lambda がエラーをログに出力 → CloudWatch Logs のサブスクリプションフィルターがその行にマッチしてイベント自体を送出 → log-forwarder Lambda が Bugs Hunter の Webhook に POST します。実際のメッセージとスタックトレースを伴って数秒以内に届き、発生 1 回につき 1 通が配信されます。",

@@ -11,6 +11,29 @@ export const client = generateClient<Schema>();
  * off it silently yields undefined rather than throwing, which is why an empty
  * catalog looked like an empty database. Parse it before use.
  */
+/**
+ * Puts the catalogue back to a sellable state. Demo runs deliberately drive
+ * stock negative, so without this the shop is unusable after a session and the
+ * only way back is editing rows by hand.
+ *
+ * Restores the same distribution the initial seed uses — mostly healthy stock
+ * with a few single-unit products, which are what make a race on the last unit
+ * demonstrable.
+ */
+export async function restockCatalog(): Promise<{ restocked: number; failed: number }> {
+  const res = await client.models.Product.list({ limit: 1000 });
+  const products = res.data ?? [];
+  let restocked = 0;
+  let failed = 0;
+  for (const p of products) {
+    const stock = Math.random() < 0.15 ? 1 : Math.floor(5 + Math.random() * 40);
+    const { errors } = await client.models.Product.update({ id: p.id, stock });
+    if (errors?.length) failed += 1;
+    else restocked += 1;
+  }
+  return { restocked, failed };
+}
+
 export interface CheckoutInput {
   sessionId: string;
   items: { productId: string; quantity: number }[];

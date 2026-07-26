@@ -101,6 +101,12 @@ export const en = {
   "chaos.running": "Running…",
   "chaos.trigger": "Trigger",
   "chaos.onScreen": "On screen:",
+  "chaos.restock": "Restock the catalogue",
+  "chaos.restocking": "Restocking…",
+  "chaos.restocked": "Restocked {count} products. Reload the shop to see them.",
+  "chaos.restockFailed": "Could not restock: {error}",
+  "chaos.restockHint":
+    "Runs drain stock and can push it below zero. Use this between demos to put the shop back in a sellable state.",
   "chaos.pipeline.title": "How a failure reaches Cowork Local",
   "chaos.pipeline.body":
     "The Lambda logs the error → a CloudWatch Logs subscription filter matches the line and ships the event itself → the log-forwarder Lambda posts it to the Bugs Hunter webhook. Arrives within seconds, with the real message and stack trace, one delivery per occurrence.",
