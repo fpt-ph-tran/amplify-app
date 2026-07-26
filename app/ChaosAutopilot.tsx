@@ -17,6 +17,7 @@ import {
   subscribe,
 } from "@/lib/chaos-store";
 import { scenarioById, type ChaosApi } from "@/lib/chaos-scenarios";
+import { useT } from "@/lib/i18n";
 
 class Cancelled extends Error {}
 
@@ -26,6 +27,7 @@ class Cancelled extends Error {}
  * would: scroll the control into view, highlight it, click it, type into it.
  */
 export default function ChaosAutopilot() {
+  const t = useT();
   const router = useRouter();
   const pathname = usePathname();
   const state = useSyncExternalStore(subscribe, getState, getServerState);
@@ -100,7 +102,7 @@ export default function ChaosAutopilot() {
       },
 
       async goto(path, label) {
-        const target = label ?? `Go to ${path}`;
+        const target = label ?? t("step.goto", { path });
         setStep(getState().stepNumber + 1, target);
         pushLog("step", target);
         router.push(path);
@@ -172,9 +174,11 @@ export default function ChaosAutopilot() {
       openPeerTab(path) {
         return window.open(path, "_blank", "width=520,height=760");
       },
+
+      t,
     };
     return api;
-  }, [router]);
+  }, [router, t]);
 
   useEffect(() => {
     return onRunRequest(async (scenarioId) => {
@@ -186,7 +190,7 @@ export default function ChaosAutopilot() {
       resetCancel();
       setCollapsed(false);
       beginRun(scenario.id, scenario.steps);
-      pushLog("info", `Driving the real UI for #${scenario.num} — ${scenario.title}.`);
+      pushLog("info", t("hud.driving", { num: scenario.num, title: t(scenario.titleKey) }));
 
       try {
         const result = await scenario.run(buildApi());
@@ -194,7 +198,7 @@ export default function ChaosAutopilot() {
         endRun({ id: scenario.id, ok: result.ok, text: result.text });
       } catch (err) {
         if (err instanceof Cancelled) {
-          pushLog("warn", "Run stopped.");
+          pushLog("warn", t("hud.stopped"));
           endRun(null);
         } else {
           const text = err instanceof Error ? err.message : String(err);
@@ -209,7 +213,7 @@ export default function ChaosAutopilot() {
         runningRef.current = false;
       }
     });
-  }, [buildApi]);
+  }, [buildApi, t]);
 
   const running = state.runningId !== null;
   if (!running && !state.verdict) return null;
@@ -242,11 +246,11 @@ export default function ChaosAutopilot() {
           </span>
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-semibold">
-              {running ? "Chaos autopilot" : "Run finished"}
+              {running ? t("hud.title") : t("hud.finished")}
             </p>
             <p className="truncate text-xs text-muted">
               {running
-                ? (state.currentStep ?? "Starting…")
+                ? (state.currentStep ?? t("hud.starting"))
                 : (state.verdict?.text ?? "")}
             </p>
           </div>
@@ -254,21 +258,21 @@ export default function ChaosAutopilot() {
             onClick={() => setCollapsed((c) => !c)}
             className="rounded-lg px-2 py-1 text-xs font-medium text-muted hover:bg-elevated hover:text-fg"
           >
-            {collapsed ? "Show" : "Hide"}
+            {collapsed ? t("hud.show") : t("hud.hide")}
           </button>
           {running ? (
             <button
               onClick={requestCancel}
               className="rounded-lg bg-danger-soft px-2.5 py-1 text-xs font-semibold text-danger hover:opacity-80"
             >
-              Stop
+              {t("hud.stop")}
             </button>
           ) : (
             <button
               onClick={clearVerdict}
               className="rounded-lg px-2.5 py-1 text-xs font-semibold text-muted hover:bg-elevated hover:text-fg"
             >
-              Close
+              {t("hud.close")}
             </button>
           )}
         </div>

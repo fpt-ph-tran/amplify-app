@@ -3,10 +3,12 @@
 import { useState, useSyncExternalStore } from "react";
 import { scenarios } from "@/lib/chaos-scenarios";
 import { getServerState, getState, requestRun, subscribe } from "@/lib/chaos-store";
+import { useT } from "@/lib/i18n";
 
 type Outcome = { text: string; ok: boolean; at: string };
 
 export default function ChaosPanel() {
+  const t = useT();
   const state = useSyncExternalStore(subscribe, getState, getServerState);
   const [headlessBusy, setHeadlessBusy] = useState<string | null>(null);
   const [outcomes, setOutcomes] = useState<Record<string, Outcome>>({});
@@ -18,7 +20,7 @@ export default function ChaosPanel() {
     if (!scenario?.headless) return;
     setHeadlessBusy(id);
     try {
-      const text = await scenario.headless();
+      const text = await scenario.headless(t);
       setOutcomes((p) => ({ ...p, [id]: { text, ok: true, at: new Date().toLocaleTimeString() } }));
     } catch (err) {
       setOutcomes((p) => ({
@@ -34,20 +36,17 @@ export default function ChaosPanel() {
     <div className="space-y-8">
       <section className="overflow-hidden rounded-3xl border border-danger/25 bg-gradient-to-br from-danger-soft to-surface p-8 sm:p-10">
         <p className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-danger">
-          <span aria-hidden>⚡</span> Chaos panel
+          <span aria-hidden>⚡</span> {t("chaos.eyebrow")}
         </p>
-        <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">Ten bugs, on demand</h1>
+        <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">{t("chaos.title")}</h1>
         <p className="mt-3 max-w-2xl text-sm leading-relaxed text-muted">
-          <strong className="text-fg">Run in UI</strong> hands the browser to an autopilot: it walks
-          the real storefront, clicks the real buttons and types into the real inputs until the bug
-          happens in front of you.{" "}
-          <strong className="text-fg">Trigger</strong> skips the screen and calls the Lambda
-          directly — faster, but there is nothing to watch.
+          <strong className="text-fg">{t("chaos.intro.a")}</strong> {t("chaos.intro.b")}{" "}
+          <strong className="text-fg">{t("chaos.intro.c")}</strong> {t("chaos.intro.d")}
         </p>
         {running && (
           <p className="mt-4 inline-flex items-center gap-2 rounded-xl bg-surface px-3.5 py-2 text-sm font-medium shadow-card">
             <span className="h-2 w-2 animate-pulse rounded-full bg-accent" />
-            Autopilot is driving — watch the panel in the corner.
+            {t("chaos.driving")}
           </p>
         )}
       </section>
@@ -68,14 +67,14 @@ export default function ChaosPanel() {
                 <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-danger-soft text-xs font-bold text-danger">
                   {s.num}
                 </span>
-                <h2 className="pt-0.5 font-semibold leading-tight">{s.title}</h2>
+                <h2 className="pt-0.5 font-semibold leading-tight">{t(s.titleKey)}</h2>
               </div>
 
-              <p className="mb-3 text-sm leading-relaxed text-muted">{s.what}</p>
+              <p className="mb-3 text-sm leading-relaxed text-muted">{t(s.whatKey)}</p>
 
               <p className="mb-4 rounded-xl bg-elevated px-3.5 py-2.5 text-xs leading-relaxed text-muted">
-                <span className="font-semibold text-fg">On screen: </span>
-                {s.onScreen}
+                <span className="font-semibold text-fg">{t("chaos.onScreen")} </span>
+                {t(s.screenKey)}
               </p>
 
               <div className="mt-auto flex flex-wrap gap-2">
@@ -85,7 +84,7 @@ export default function ChaosPanel() {
                   className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-accent px-3.5 py-2.5 text-sm font-semibold text-accent-fg transition hover:bg-accent-hover disabled:opacity-40"
                 >
                   <span aria-hidden>▶</span>
-                  {isRunning ? "Running…" : "Run in UI"}
+                  {isRunning ? t("chaos.running") : t("chaos.runInUI")}
                 </button>
                 {s.headless && (
                   <button
@@ -93,7 +92,7 @@ export default function ChaosPanel() {
                     disabled={!!running || headlessBusy === s.id}
                     className="rounded-xl border border-line px-3.5 py-2.5 text-sm font-medium text-muted transition hover:border-line-strong hover:text-fg disabled:opacity-40"
                   >
-                    {headlessBusy === s.id ? "…" : "Trigger"}
+                    {headlessBusy === s.id ? "…" : t("chaos.trigger")}
                   </button>
                 )}
               </div>
@@ -115,12 +114,9 @@ export default function ChaosPanel() {
       </div>
 
       <section className="rounded-2xl border border-line bg-surface p-5">
-        <h2 className="mb-2 text-sm font-semibold">How a failure reaches Cowork Local</h2>
+        <h2 className="mb-2 text-sm font-semibold">{t("chaos.pipeline.title")}</h2>
         <p className="text-xs leading-relaxed text-muted">
-          The Lambda logs the error → a CloudWatch Logs subscription filter matches the line and
-          ships the event itself → the <code className="font-mono">log-forwarder</code> Lambda posts
-          it to the Bugs Hunter webhook. Arrives within seconds, with the real message and stack
-          trace, one delivery per occurrence.
+          {t("chaos.pipeline.body")}
         </p>
       </section>
     </div>

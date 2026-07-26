@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { client, getCart, getSessionId, setCart, type CartItem } from "@/lib/client";
+import { useT } from "@/lib/i18n";
 
 interface Attempt {
   ok: boolean;
@@ -12,6 +13,7 @@ interface Attempt {
 }
 
 export default function CheckoutPage() {
+  const t = useT();
   const [items, setItems] = useState<CartItem[]>([]);
   const [coupon, setCoupon] = useState("");
   const [express, setExpress] = useState(false);
@@ -96,12 +98,12 @@ export default function CheckoutPage() {
         <p className="mb-4 text-4xl" aria-hidden>
           🧾
         </p>
-        <p className="mb-6 text-sm text-muted">Nothing to check out — your cart is empty.</p>
+        <p className="mb-6 text-sm text-muted">{t("checkout.emptyBody")}</p>
         <Link
           href="/"
           className="inline-block rounded-xl bg-accent px-5 py-2.5 text-sm font-semibold text-accent-fg transition hover:bg-accent-hover"
         >
-          Browse the shop
+          {t("cart.browse")}
         </Link>
       </div>
     );
@@ -111,15 +113,18 @@ export default function CheckoutPage() {
     <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
       <div className="space-y-6">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Checkout</h1>
+          <h1 className="text-2xl font-bold tracking-tight">{t("checkout.title")}</h1>
           <p className="mt-1 text-sm text-muted">
-            Session <span className="font-mono text-xs">{sessionId.slice(0, 8) || "…"}</span>
-            {sessionStale && <span className="ml-2 font-semibold text-danger">· token expired</span>}
+            {t("checkout.session")}{" "}
+            <span className="font-mono text-xs">{sessionId.slice(0, 8) || "…"}</span>
+            {sessionStale && (
+              <span className="ml-2 font-semibold text-danger">{t("checkout.tokenExpired")}</span>
+            )}
           </p>
         </div>
 
         <section className="rounded-2xl border border-line bg-surface p-5 shadow-card">
-          <h2 className="mb-3 text-sm font-semibold">Order summary</h2>
+          <h2 className="mb-3 text-sm font-semibold">{t("checkout.summary")}</h2>
           <ul className="divide-y divide-line">
             {items.map((i) => (
               <li key={i.productId} className="flex items-center justify-between gap-4 py-2.5 text-sm">
@@ -133,7 +138,7 @@ export default function CheckoutPage() {
             ))}
           </ul>
           <div className="mt-3 flex items-baseline justify-between border-t border-line pt-3">
-            <span className="text-sm font-semibold">Total shown to you</span>
+            <span className="text-sm font-semibold">{t("checkout.totalShown")}</span>
             <span
               data-chaos="client-total"
               data-total={clientTotal}
@@ -147,19 +152,18 @@ export default function CheckoutPage() {
         <section className="space-y-4 rounded-2xl border border-line bg-surface p-5 shadow-card">
           <div>
             <label htmlFor="coupon" className="mb-1.5 block text-sm font-semibold">
-              Coupon code
+              {t("checkout.coupon")}
             </label>
             <input
               id="coupon"
               data-chaos="coupon-input"
               value={coupon}
               onChange={(e) => setCoupon(e.target.value)}
-              placeholder="SAVE10, FLAT5 — or both, comma separated"
+              placeholder={t("checkout.couponPlaceholder")}
               className="w-full rounded-xl border border-line bg-canvas px-3.5 py-2.5 text-sm"
             />
             <p className="mt-1.5 text-xs text-faint">
-              Codes are applied left to right. <code className="font-mono">SAVE10,FLAT5</code> and{" "}
-              <code className="font-mono">FLAT5,SAVE10</code> do not cost the same.
+              {t("checkout.couponHint", { a: "SAVE10,FLAT5", b: "FLAT5,SAVE10" })}
             </p>
           </div>
 
@@ -172,9 +176,9 @@ export default function CheckoutPage() {
               className="mt-0.5 h-4 w-4 accent-[var(--accent)]"
             />
             <span className="text-sm">
-              <span className="font-medium">Express shipping</span>
+              <span className="font-medium">{t("checkout.express")}</span>
               <span className="block text-xs text-muted">
-                Fetches a live carrier quote at checkout. The call can take up to 8s.
+                {t("checkout.expressHint")}
               </span>
             </span>
           </label>
@@ -188,7 +192,7 @@ export default function CheckoutPage() {
       <aside className="h-fit space-y-4 lg:sticky lg:top-24">
         <div className="space-y-3 rounded-2xl border border-line bg-surface p-5 shadow-card">
           <div className="flex items-baseline justify-between">
-            <span className="text-sm text-muted">You pay</span>
+            <span className="text-sm text-muted">{t("checkout.youPay")}</span>
             <span className="text-2xl font-bold tabular-nums">${clientTotal.toFixed(2)}</span>
           </div>
           {/* Deliberately never disabled: nothing here guards against a
@@ -198,14 +202,14 @@ export default function CheckoutPage() {
             onClick={() => void placeOrder()}
             className="w-full rounded-xl bg-accent px-4 py-3 text-sm font-semibold text-accent-fg transition hover:bg-accent-hover"
           >
-            {busy ? `Placing order… (${inFlight} in flight)` : "Place order"}
+            {busy ? t("checkout.placing", { count: inFlight }) : t("checkout.placeOrder")}
           </button>
           <button
             data-chaos="expire-session"
             onClick={() => setSessionStale(true)}
             className="w-full rounded-xl border border-line px-4 py-2 text-xs font-medium text-muted transition hover:border-danger hover:text-danger"
           >
-            {sessionStale ? "Session is stale" : "Simulate an idle-timeout (expire my session)"}
+            {sessionStale ? t("checkout.sessionStale") : t("checkout.expireSession")}
           </button>
         </div>
 
@@ -225,27 +229,32 @@ export default function CheckoutPage() {
             <p className="font-semibold">
               {okCount > 0
                 ? attempts.length > 1
-                  ? `${okCount} of ${attempts.length} requests created an order`
-                  : "Order confirmed"
-                : "Checkout failed"}
+                  ? t("checkout.result.multi", { ok: okCount, total: attempts.length })
+                  : t("checkout.result.confirmed")
+                : t("checkout.result.failed")}
             </p>
 
             {lastOk?.total != null && (
               <p className="tabular-nums">
-                Server charged <strong>${lastOk.total.toFixed(2)}</strong>
+                {t("checkout.result.charged")} <strong>${lastOk.total.toFixed(2)}</strong>
                 {drift != null && Math.abs(drift) > 0.0001 && (
                   <span className="block text-xs opacity-80">
-                    page showed ${clientTotal.toFixed(2)} — off by {(drift * 100).toFixed(4)} cents
+                    {t("checkout.result.drift", {
+                      shown: clientTotal.toFixed(2),
+                      cents: (drift * 100).toFixed(4),
+                    })}
                   </span>
                 )}
               </p>
             )}
             {lastOk?.orderId && (
-              <p className="font-mono text-xs opacity-80">order {lastOk.orderId}</p>
+              <p className="font-mono text-xs opacity-80">
+                {t("checkout.result.order", { id: lastOk.orderId })}
+              </p>
             )}
             {okCount > 1 && (
               <p className="text-xs opacity-90">
-                Both carried idempotency key {idempotencyKey.slice(0, 8)}… — duplicate charge.
+                {t("checkout.result.duplicate", { key: idempotencyKey.slice(0, 8) })}
               </p>
             )}
             {firstErr?.error && <p className="text-xs opacity-90">{firstErr.error}</p>}
@@ -253,8 +262,7 @@ export default function CheckoutPage() {
         )}
 
         <p className="px-1 text-xs leading-relaxed text-faint">
-          Every failure on this page is real backend behaviour, forwarded to Cowork Local through
-          CloudWatch.
+          {t("checkout.footnote")}
         </p>
       </aside>
     </div>

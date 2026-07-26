@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import type { Schema } from "@/amplify/data/resource";
 import { client, getCart, getSessionId, setCart, type CartItem } from "@/lib/client";
+import { useT } from "@/lib/i18n";
 
 type CartRow = Schema["Cart"]["type"];
 
@@ -16,6 +17,7 @@ async function loadServerCart(sessionId: string): Promise<CartRow | null> {
 }
 
 function CartView() {
+  const t = useT();
   const router = useRouter();
   const params = useSearchParams();
   const isPeer = params.get("chaos") === "peer";
@@ -135,14 +137,16 @@ function CartView() {
         <p className="text-2xl" aria-hidden>
           🪟
         </p>
-        <h1 className="text-lg font-bold text-warning">Second tab — same cart</h1>
+        <h1 className="text-lg font-bold text-warning">{t("cart.peer.title")}</h1>
         <p className="text-sm text-warning">
-          This tab just wrote <strong>quantity {peerQty}</strong> to the shared cart row. The other
-          tab is writing a different number at the same moment. Whichever lands last wins, and the
-          other change disappears without any conflict error.
+          {t("cart.peer.body", { qty: peerQty })}
         </p>
         <p className="font-mono text-xs text-warning/80">
-          {syncing ? "saving…" : syncedAt ? `saved at ${syncedAt}` : "waiting for the cart to load…"}
+          {syncing
+            ? t("cart.peer.saving")
+            : syncedAt
+              ? t("cart.peer.saved", { time: syncedAt })
+              : t("cart.peer.waiting")}
         </p>
       </div>
     );
@@ -152,11 +156,9 @@ function CartView() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Your cart</h1>
+          <h1 className="text-2xl font-bold tracking-tight">{t("cart.title")}</h1>
           <p className="mt-1 text-sm text-muted">
-            {items.length === 0
-              ? "Nothing here yet."
-              : `${items.length} line item${items.length === 1 ? "" : "s"} · synced to the shared cart row`}
+            {items.length === 0 ? t("cart.empty") : t("cart.summary", { count: items.length })}
           </p>
         </div>
         <button
@@ -164,7 +166,7 @@ function CartView() {
           onClick={() => void pullFromServer()}
           className="rounded-xl border border-line bg-surface px-3.5 py-2 text-sm font-medium text-muted transition hover:border-line-strong hover:text-fg"
         >
-          Reload from server
+          {t("cart.reload")}
         </button>
       </div>
 
@@ -173,12 +175,12 @@ function CartView() {
           <p className="mb-4 text-4xl" aria-hidden>
             🛒
           </p>
-          <p className="mb-6 text-sm text-muted">Your cart is empty.</p>
+          <p className="mb-6 text-sm text-muted">{t("cart.emptyBody")}</p>
           <Link
             href="/"
             className="inline-block rounded-xl bg-accent px-5 py-2.5 text-sm font-semibold text-accent-fg transition hover:bg-accent-hover"
           >
-            Browse the shop
+            {t("cart.browse")}
           </Link>
         </div>
       ) : (
@@ -191,7 +193,7 @@ function CartView() {
               >
                 <div className="min-w-0">
                   <p className="truncate font-semibold">{item.name}</p>
-                  <p className="text-sm text-muted">${item.price.toFixed(2)} each</p>
+                  <p className="text-sm text-muted">{t("cart.each", { price: item.price.toFixed(2) })}</p>
                 </div>
                 <div className="flex items-center gap-3">
                   <input
@@ -201,7 +203,7 @@ function CartView() {
                     value={item.quantity}
                     onChange={(e) => updateQty(item.productId, Number(e.target.value))}
                     className="w-20 rounded-xl border border-line bg-canvas px-3 py-2 text-center font-medium tabular-nums"
-                    aria-label={`Quantity for ${item.name}`}
+                    aria-label={t("cart.quantityFor", { name: item.name })}
                   />
                   <span className="w-20 text-right font-semibold tabular-nums">
                     ${(item.price * item.quantity).toFixed(2)}
@@ -209,9 +211,9 @@ function CartView() {
                   <button
                     onClick={() => remove(item.productId)}
                     className="rounded-lg px-2 py-1 text-sm text-muted transition hover:bg-danger-soft hover:text-danger"
-                    aria-label={`Remove ${item.name}`}
+                    aria-label={`${t("cart.remove")} — ${item.name}`}
                   >
-                    Remove
+                    {t("cart.remove")}
                   </button>
                 </div>
               </div>
@@ -224,15 +226,15 @@ function CartView() {
                 }`}
               />
               {syncError
-                ? "cart backend unreachable — local only"
+                ? t("cart.sync.error")
                 : syncing
-                  ? "saving to the shared cart row…"
+                  ? t("cart.sync.saving")
                   : syncedAt
-                    ? `saved ${syncedAt}`
-                    : "in sync"}
+                    ? t("cart.sync.saved", { time: syncedAt })
+                    : t("cart.sync.inSync")}
               {serverQty != null && (
                 <span data-chaos="cart-server-qty" data-qty={serverQty} className="ml-auto">
-                  server holds qty {serverQty} for line 1
+                  {t("cart.serverHolds", { qty: serverQty })}
                 </span>
               )}
             </div>
@@ -240,7 +242,7 @@ function CartView() {
 
           <aside className="h-fit space-y-4 rounded-2xl border border-line bg-surface p-5 shadow-card lg:sticky lg:top-24">
             <div className="flex items-baseline justify-between">
-              <span className="text-sm text-muted">Subtotal</span>
+              <span className="text-sm text-muted">{t("cart.subtotal")}</span>
               <span className="text-2xl font-bold tracking-tight tabular-nums">
                 ${total.toFixed(2)}
               </span>
@@ -250,11 +252,10 @@ function CartView() {
               onClick={() => router.push("/checkout")}
               className="w-full rounded-xl bg-accent px-4 py-3 text-sm font-semibold text-accent-fg transition hover:bg-accent-hover"
             >
-              Proceed to checkout
+              {t("cart.checkout")}
             </button>
             <p className="text-xs leading-relaxed text-faint">
-              Quantities are saved with a plain last-write-wins update. Open this page in two tabs
-              and change the number in both — one of them vanishes silently.
+              {t("cart.hint")}
             </p>
           </aside>
         </div>

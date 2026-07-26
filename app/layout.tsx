@@ -4,6 +4,7 @@ import "./globals.css";
 import ConfigureAmplify from "./ConfigureAmplify";
 import NavBar from "./NavBar";
 import ChaosAutopilot from "./ChaosAutopilot";
+import Footer from "./Footer";
 import { THEME_BOOTSTRAP } from "@/lib/theme-script";
 
 const geistSans = Geist({
@@ -27,8 +28,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    // The bootstrap script sets data-theme before React hydrates, so the
-    // server-rendered html element deliberately won't match.
+    // The bootstrap script sets data-theme and lang before React hydrates, so
+    // the server-rendered html element deliberately won't match.
     <html
       lang="en"
       suppressHydrationWarning
@@ -41,12 +42,7 @@ export default function RootLayout({
         <ConfigureAmplify />
         <NavBar />
         <main className="mx-auto w-full max-w-6xl flex-1 px-5 py-8 sm:px-6 sm:py-10">{children}</main>
-        <footer className="border-t border-line px-6 py-6">
-          <p className="mx-auto max-w-6xl text-center text-xs text-faint">
-            QuickCart is a demo storefront with ten deliberate production bugs — every failure here
-            is real and streams straight out of CloudWatch Logs to Cowork Local.
-          </p>
-        </footer>
+        <Footer />
         {/* Sits outside <main> so a run survives navigation between pages. */}
         <ChaosAutopilot />
       </body>

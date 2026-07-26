@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useT } from "@/lib/i18n";
 
 type Theme = "light" | "dark";
 
 export default function ThemeToggle() {
+  const t = useT();
   const [theme, setTheme] = useState<Theme | null>(null);
 
   useEffect(() => {
@@ -26,8 +28,8 @@ export default function ThemeToggle() {
     <button
       onClick={toggle}
       // Rendered before hydration knows the theme; keep the box stable either way.
-      aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
-      title={theme === "dark" ? "Light theme" : "Dark theme"}
+      aria-label={theme === "dark" ? t("nav.theme.toLight") : t("nav.theme.toDark")}
+      title={theme === "dark" ? t("nav.theme.toLight") : t("nav.theme.toDark")}
       className="grid h-9 w-9 place-items-center rounded-xl border border-line bg-surface text-muted transition hover:border-line-strong hover:text-fg"
     >
       {theme === "dark" ? (

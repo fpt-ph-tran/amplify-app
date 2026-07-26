@@ -4,15 +4,17 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { getCart } from "@/lib/client";
+import { useT } from "@/lib/i18n";
 import ThemeToggle from "./ThemeToggle";
-
-const links = [
-  { href: "/", label: "Shop" },
-  { href: "/cart", label: "Cart" },
-];
+import LanguageSwitcher from "./LanguageSwitcher";
 
 export default function NavBar() {
   const pathname = usePathname();
+  const t = useT();
+  const links = [
+    { href: "/", label: t("nav.shop") },
+    { href: "/cart", label: t("nav.cart") },
+  ];
   const [count, setCount] = useState(0);
 
   useEffect(() => {
@@ -57,6 +59,7 @@ export default function NavBar() {
         })}
 
         <div className="ml-auto flex items-center gap-2">
+          <LanguageSwitcher />
           <ThemeToggle />
           <Link
             href="/admin/chaos"
@@ -67,7 +70,7 @@ export default function NavBar() {
             }`}
           >
             <span aria-hidden>⚡</span>
-            <span className="hidden sm:inline">Chaos Panel</span>
+            <span className="hidden sm:inline">{t("nav.chaos")}</span>
           </Link>
         </div>
       </nav>

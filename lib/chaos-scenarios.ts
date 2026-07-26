@@ -1,6 +1,7 @@
 "use client";
 
 import { client, getSessionId } from "@/lib/client";
+import type { TranslationKey, Translate } from "@/lib/i18n";
 
 /**
  * Every scenario below drives the REAL storefront: it navigates the router,
@@ -9,7 +10,8 @@ import { client, getSessionId } from "@/lib/client";
  * a Lambda behind the UI's back (that is what `headless` is for).
  *
  * Elements are addressed through `data-chaos` attributes so the pages stay
- * free to change their markup.
+ * free to change their markup. Every string the operator sees goes through
+ * `api.t`, so a run narrates itself in whatever language the app is set to.
  */
 
 export interface ChaosApi {
@@ -32,20 +34,21 @@ export interface ChaosApi {
   pause(ms: number): Promise<void>;
   openPeerTab(path: string): Window | null;
   throwIfCancelled(): void;
+  t: Translate;
 }
 
 export interface Scenario {
   id: string;
   num: number;
-  title: string;
+  titleKey: TranslationKey;
   /** One line on what goes wrong. */
-  what: string;
+  whatKey: TranslationKey;
   /** What the audience will literally watch happen on screen. */
-  onScreen: string;
+  screenKey: TranslationKey;
   steps: number;
   run: (api: ChaosApi) => Promise<{ ok: boolean; text: string }>;
   /** The old one-shot path: calls the Lambda directly, no UI involved. */
-  headless?: () => Promise<string>;
+  headless?: (t: Translate) => Promise<string>;
 }
 
 const money = (n: number) => `$${n.toFixed(2)}`;
@@ -57,8 +60,9 @@ async function serverTotal(api: ChaosApi): Promise<number | null> {
   return Number.isFinite(n) ? n : null;
 }
 
-async function addFirstProduct(api: ChaosApi, label = "Add the first product to the cart") {
-  await api.goto("/", "Open the storefront");
+/** The first product on the catalog, added to the cart. */
+async function addFirstProduct(api: ChaosApi, label = api.t("step.addFirst")) {
+  await api.goto("/", api.t("step.openShop"));
   await api.waitFor('[data-chaos="product"]');
   await api.click('[data-chaos="add-to-cart"]', label);
 }
@@ -66,74 +70,46 @@ async function addFirstProduct(api: ChaosApi, label = "Add the first product to 
 /** Shared opening for the checkout-based scenarios. */
 async function toCheckoutWithOneItem(api: ChaosApi) {
   await addFirstProduct(api);
-  await api.goto("/cart", "Open the cart");
-  await api.click('[data-chaos="to-checkout"]', "Proceed to checkout");
+  await api.goto("/cart", api.t("step.openCart"));
+  await api.click('[data-chaos="to-checkout"]', api.t("step.checkout"));
   await api.waitFor('[data-chaos="place-order"]');
+}
+
+/** Every headless path needs a product id; they all fetch it the same way. */
+async function firstProduct(): Promise<{ id: string; name: string; stock: number } | null> {
+  const res = await client.queries.getCatalog({});
+  const items =
+    (res.data as { items?: { id: string; name: string; stock: number }[] } | null)?.items ?? [];
+  return items[0] ?? null;
 }
 
 export const scenarios: Scenario[] = [
   {
     id: "oversell",
     num: 1,
-    title: "Oversell the last units",
-    what: "Stock is decremented without a conditional write, so two checkouts for the same last units both pass.",
-    onScreen:
-      "Adds a product, sets the quantity to everything left in stock, then double-clicks Place order so two checkouts race.",
+    titleKey: "bug1.title",
+    whatKey: "bug1.what",
+    screenKey: "bug1.screen",
     steps: 6,
     run: async (api) => {
-      await api.goto("/", "Open the storefront");
+      const { t } = api;
+      await api.goto("/", t("step.openShop"));
       await api.waitFor('[data-chaos="product"]');
       const stock = Number((await api.read('[data-chaos="product"]', "data-stock")) ?? "0");
-      const name = (await api.read('[data-chaos="product"]', "data-name")) ?? "the product";
-      api.log("info", `"${name}" has ${stock} unit(s) left.`);
-      await api.click('[data-chaos="add-to-cart"]', "Add it to the cart");
+      const name = (await api.read('[data-chaos="product"]', "data-name")) ?? "?";
+      api.log("info", t("bug1.stockNote", { name, stock }));
+      await api.click('[data-chaos="add-to-cart"]', t("bug1.add"));
 
-      await api.goto("/cart", "Open the cart");
-      await api.fill('[data-chaos="qty-input"]', String(Math.max(stock, 1)), `Set quantity to all ${stock} remaining`);
-      await api.click('[data-chaos="to-checkout"]', "Proceed to checkout");
+      await api.goto("/cart", t("step.openCart"));
+      await api.fill(
+        '[data-chaos="qty-input"]',
+        String(Math.max(stock, 1)),
+        t("bug1.setQty", { stock }),
+      );
+      await api.click('[data-chaos="to-checkout"]', t("step.checkout"));
 
       await api.waitFor('[data-chaos="place-order"]');
-      await api.doubleClick('[data-chaos="place-order"]', "Double-click Place order — two checkouts race");
-      await api.waitFor('[data-chaos="order-result"]', 20000);
-      await api.pause(400);
-
-      const okCount = await api.read('[data-chaos="order-result"]', "data-ok-count");
-      if (okCount === "2") {
-        return {
-          ok: true,
-          text: `Both concurrent checkouts for all ${stock} unit(s) of "${name}" succeeded — stock can now go negative. Reload the catalog to see it.`,
-        };
-      }
-      return {
-        ok: true,
-        text: `${okCount ?? "?"}/2 checkouts succeeded. Re-run on a product with more stock, or check the catalog for a negative count.`,
-      };
-    },
-    headless: async () => {
-      const res = await client.queries.getCatalog({});
-      const items = (res.data as { items?: { id: string; name: string; stock: number }[] } | null)?.items ?? [];
-      const p = items[0];
-      if (!p) return "No product loaded yet.";
-      const args = { sessionId: getSessionId(), items: [{ productId: p.id, quantity: p.stock }] };
-      const [a, b] = await Promise.all([client.mutations.checkout(args), client.mutations.checkout(args)]);
-      const okCount = [a, b].filter((r) => !r.errors?.length).length;
-      return `${okCount}/2 concurrent checkouts for all ${p.stock} unit(s) of "${p.name}" succeeded.`;
-    },
-  },
-
-  {
-    id: "duplicate-order",
-    num: 2,
-    title: "Duplicate order on double-click",
-    what: "The idempotency key is sent but never checked server-side, so an impatient double-click bills twice.",
-    onScreen:
-      "Puts one item in the cart and double-clicks Place order — the page never disables the button, so both requests go out with the same key.",
-    steps: 5,
-    run: async (api) => {
-      await toCheckoutWithOneItem(api);
-      const key = await api.read('[data-chaos="idempotency-key"]', "data-key");
-      api.log("info", `Checkout is holding idempotency key ${key?.slice(0, 8)}… for this cart.`);
-      await api.doubleClick('[data-chaos="place-order"]', "Double-click Place order");
+      await api.doubleClick('[data-chaos="place-order"]', t("bug1.doubleClick"));
       await api.waitFor('[data-chaos="order-result"]', 20000);
       await api.pause(400);
 
@@ -142,81 +118,103 @@ export const scenarios: Scenario[] = [
         ok: true,
         text:
           okCount === "2"
-            ? "Both requests carried the SAME idempotency key and both created an order — that is a duplicate charge."
-            : `${okCount ?? "?"}/2 requests succeeded — the second was not rejected by any dedupe check, it just lost a race.`,
+            ? t("bug1.both", { stock, name })
+            : t("bug1.partial", { ok: okCount ?? "?" }),
       };
     },
-    headless: async () => {
-      const res = await client.queries.getCatalog({});
-      const p = (res.data as { items?: { id: string }[] } | null)?.items?.[0];
-      if (!p) return "No product loaded yet.";
+    headless: async (t) => {
+      const p = await firstProduct();
+      if (!p) return t("headless.noProduct");
+      const args = { sessionId: getSessionId(), items: [{ productId: p.id, quantity: p.stock }] };
+      const [a, b] = await Promise.all([client.mutations.checkout(args), client.mutations.checkout(args)]);
+      const ok = [a, b].filter((r) => !r.errors?.length).length;
+      return ok === 2 ? t("bug1.both", { stock: p.stock, name: p.name }) : t("bug1.partial", { ok });
+    },
+  },
+
+  {
+    id: "duplicate-order",
+    num: 2,
+    titleKey: "bug2.title",
+    whatKey: "bug2.what",
+    screenKey: "bug2.screen",
+    steps: 5,
+    run: async (api) => {
+      const { t } = api;
+      await toCheckoutWithOneItem(api);
+      const key = await api.read('[data-chaos="idempotency-key"]', "data-key");
+      api.log("info", t("bug2.keyNote", { key: key?.slice(0, 8) ?? "?" }));
+      await api.doubleClick('[data-chaos="place-order"]', t("bug2.doubleClick"));
+      await api.waitFor('[data-chaos="order-result"]', 20000);
+      await api.pause(400);
+
+      const okCount = await api.read('[data-chaos="order-result"]', "data-ok-count");
+      return {
+        ok: true,
+        text: okCount === "2" ? t("bug2.both") : t("bug2.partial", { ok: okCount ?? "?" }),
+      };
+    },
+    headless: async (t) => {
+      const p = await firstProduct();
+      if (!p) return t("headless.noProduct");
       const args = {
         sessionId: getSessionId(),
         items: [{ productId: p.id, quantity: 1 }],
         idempotencyKey: crypto.randomUUID(),
       };
       const [a, b] = await Promise.all([client.mutations.checkout(args), client.mutations.checkout(args)]);
-      return `${[a, b].filter((r) => !r.errors?.length).length}/2 requests with the SAME idempotency key succeeded.`;
+      const ok = [a, b].filter((r) => !r.errors?.length).length;
+      return ok === 2 ? t("bug2.both") : t("bug2.partial", { ok });
     },
   },
 
   {
     id: "audit-accessdenied",
     num: 3,
-    title: "Audit log silently fails (IAM)",
-    what: "The checkout role has no s3:PutObject on the audit bucket, so every order loses its audit trail while the customer sees success.",
-    onScreen: "Buys one item completely normally. The order confirms on screen — the failure is only visible in CloudWatch.",
+    titleKey: "bug3.title",
+    whatKey: "bug3.what",
+    screenKey: "bug3.screen",
     steps: 5,
     run: async (api) => {
+      const { t } = api;
       await toCheckoutWithOneItem(api);
-      await api.click('[data-chaos="place-order"]', "Place a perfectly ordinary order");
+      await api.click('[data-chaos="place-order"]', t("bug3.place"));
       await api.waitFor('[data-chaos="order-result"]', 20000);
       const ok = (await api.read('[data-chaos="order-result"]', "data-ok")) === "true";
-      return {
-        ok: true,
-        text: ok
-          ? "Order confirmed on screen. The s3:PutObject AccessDenied happened server-side — the customer will never know the audit record is missing."
-          : "Checkout failed before reaching the audit write — check the result panel.",
-      };
+      return { ok: true, text: ok ? t("bug3.ok") : t("bug3.failed") };
     },
-    headless: async () => {
-      const res = await client.queries.getCatalog({});
-      const p = (res.data as { items?: { id: string }[] } | null)?.items?.[0];
-      if (!p) return "No product loaded yet.";
+    headless: async (t) => {
+      const p = await firstProduct();
+      if (!p) return t("headless.noProduct");
       await client.mutations.checkout({ sessionId: getSessionId(), items: [{ productId: p.id, quantity: 1 }] });
-      return "Checkout ran — check CloudWatch Logs for the AccessDenied on s3:PutObject.";
+      return t("bug3.ok");
     },
   },
 
   {
     id: "lost-cart-update",
     num: 4,
-    title: "Lost cart update across tabs",
-    what: "The cart is saved with a plain last-write-wins update, so one tab silently clobbers the other's change.",
-    onScreen:
-      "Opens a SECOND browser tab on the cart. Both tabs change the quantity within the same moment; only one survives.",
+    titleKey: "bug4.title",
+    whatKey: "bug4.what",
+    screenKey: "bug4.screen",
     steps: 6,
     run: async (api) => {
+      const { t } = api;
       await addFirstProduct(api);
-      await api.goto("/cart", "Open the cart");
+      await api.goto("/cart", t("step.openCart"));
       await api.waitFor('[data-chaos="qty-input"]');
 
-      api.step("Open a second tab on the same cart");
+      api.step(t("bug4.openTab"));
       const peer = api.openPeerTab("/cart?chaos=peer&qty=9");
-      if (!peer) {
-        return {
-          ok: false,
-          text: "The browser blocked the second tab. Allow pop-ups for this site and run it again.",
-        };
-      }
-      api.log("info", "Second tab opened — it will write quantity 9 to the server.");
+      if (!peer) return { ok: false, text: t("bug4.blocked") };
+      api.log("info", t("bug4.opened"));
       await api.pause(1600);
 
-      await api.fill('[data-chaos="qty-input"]', "2", "This tab sets quantity to 2 at the same time");
+      await api.fill('[data-chaos="qty-input"]', "2", t("bug4.setQty"));
       await api.pause(2000);
 
-      api.step("Re-read the cart from the server");
-      await api.click('[data-chaos="reload-cart"]', "Reload the cart from the server");
+      api.step(t("bug4.reread"));
+      await api.click('[data-chaos="reload-cart"]', t("bug4.reload"));
       await api.pause(1200);
       const winner = await api.read('[data-chaos="qty-input"]', "value");
       const serverQty = (await api.read('[data-chaos="cart-server-qty"]', "data-qty")) ?? winner;
@@ -227,91 +225,109 @@ export const scenarios: Scenario[] = [
         /* the peer may already be gone */
       }
 
-      return {
-        ok: true,
-        text: `Two tabs wrote 9 and 2 within the same second; the server kept ${serverQty}. The other tab's change vanished with no conflict error.`,
-      };
+      return { ok: true, text: t("bug4.result", { qty: serverQty ?? "?" }) };
     },
   },
 
   {
     id: "coupon-order",
     num: 5,
-    title: "Coupon math depends on order",
-    what: "SAVE10 (10% off) and FLAT5 (−$5) are applied in separate ifs, so the order they are listed in changes the price.",
-    onScreen: "Checks out the same cart twice — once with SAVE10,FLAT5 and once with FLAT5,SAVE10 — and compares the totals.",
+    titleKey: "bug5.title",
+    whatKey: "bug5.what",
+    screenKey: "bug5.screen",
     steps: 8,
     run: async (api) => {
+      const { t } = api;
       await addFirstProduct(api);
-      await api.goto("/cart", "Open the cart");
-      await api.fill('[data-chaos="qty-input"]', "3", "Set quantity to 3");
-      await api.click('[data-chaos="to-checkout"]', "Proceed to checkout");
+      await api.goto("/cart", t("step.openCart"));
+      await api.fill('[data-chaos="qty-input"]', "3", t("bug5.setQty"));
+      await api.click('[data-chaos="to-checkout"]', t("step.checkout"));
 
-      await api.fill('[data-chaos="coupon-input"]', "SAVE10,FLAT5", 'Enter coupon "SAVE10,FLAT5"');
-      await api.click('[data-chaos="place-order"]', "Place the order");
+      await api.fill('[data-chaos="coupon-input"]', "SAVE10,FLAT5", t("bug5.enterA"));
+      await api.click('[data-chaos="place-order"]', t("bug5.place"));
       await api.waitFor('[data-chaos="order-result"]', 20000);
       const totalA = await serverTotal(api);
-      api.log("info", `SAVE10 then FLAT5 → ${totalA == null ? "n/a" : money(totalA)}`);
+      api.log("info", t("bug5.noteA", { total: totalA == null ? "n/a" : money(totalA) }));
 
-      await addFirstProduct(api, "Rebuild the same cart");
-      await api.goto("/cart", "Open the cart");
-      await api.fill('[data-chaos="qty-input"]', "3", "Set quantity to 3 again");
-      await api.click('[data-chaos="to-checkout"]', "Proceed to checkout");
-      await api.fill('[data-chaos="coupon-input"]', "FLAT5,SAVE10", 'Enter the SAME coupons, reversed');
-      await api.click('[data-chaos="place-order"]', "Place the order");
+      await addFirstProduct(api, t("step.rebuildCart"));
+      await api.goto("/cart", t("step.openCart"));
+      await api.fill('[data-chaos="qty-input"]', "3", t("bug5.setQtyAgain"));
+      await api.click('[data-chaos="to-checkout"]', t("step.checkout"));
+      await api.fill('[data-chaos="coupon-input"]', "FLAT5,SAVE10", t("bug5.enterB"));
+      await api.click('[data-chaos="place-order"]', t("bug5.place"));
       await api.waitFor('[data-chaos="order-result"]', 20000);
       const totalB = await serverTotal(api);
-      api.log("info", `FLAT5 then SAVE10 → ${totalB == null ? "n/a" : money(totalB)}`);
+      api.log("info", t("bug5.noteB", { total: totalB == null ? "n/a" : money(totalB) }));
 
       if (totalA != null && totalB != null && totalA !== totalB) {
         return {
           ok: true,
-          text: `Same cart, same two coupons, different price: ${money(totalA)} vs ${money(totalB)} — a ${money(Math.abs(totalA - totalB))} swing decided by string order.`,
+          text: t("bug5.differ", {
+            a: money(totalA),
+            b: money(totalB),
+            diff: money(Math.abs(totalA - totalB)),
+          }),
         };
       }
       return {
         ok: true,
-        text: `Totals came back ${totalA == null ? "n/a" : money(totalA)} and ${totalB == null ? "n/a" : money(totalB)}. Check the result panels above.`,
+        text: t("bug5.same", {
+          a: totalA == null ? "n/a" : money(totalA),
+          b: totalB == null ? "n/a" : money(totalB),
+        }),
       };
     },
-    headless: async () => {
-      const res = await client.queries.getCatalog({});
-      const p = (res.data as { items?: { id: string }[] } | null)?.items?.[0];
-      if (!p) return "No product loaded yet.";
-      const r = await client.mutations.checkout({
-        sessionId: getSessionId(),
-        items: [{ productId: p.id, quantity: 3 }],
-        couponCode: "SAVE10,FLAT5",
+    headless: async (t) => {
+      const p = await firstProduct();
+      if (!p) return t("headless.noProduct");
+      const call = (code: string) =>
+        client.mutations.checkout({
+          sessionId: getSessionId(),
+          items: [{ productId: p.id, quantity: 3 }],
+          couponCode: code,
+        });
+      const a = (await call("SAVE10,FLAT5")).data as { total?: number } | null;
+      const b = (await call("FLAT5,SAVE10")).data as { total?: number } | null;
+      if (typeof a?.total === "number" && typeof b?.total === "number" && a.total !== b.total) {
+        return t("bug5.differ", {
+          a: money(a.total),
+          b: money(b.total),
+          diff: money(Math.abs(a.total - b.total)),
+        });
+      }
+      return t("bug5.same", {
+        a: a?.total == null ? "n/a" : money(a.total),
+        b: b?.total == null ? "n/a" : money(b.total),
       });
-      return `Total returned: ${JSON.stringify(r.data)}`;
     },
   },
 
   {
     id: "rounding-drift",
     num: 6,
-    title: "Floating-point rounding drift",
-    what: "Line totals accumulate as raw JS floats and are never rounded to cents, so the total drifts from the sum of what is shown.",
-    onScreen: "Adds a basket full of items, then compares the total the page shows against the total the server charges.",
+    titleKey: "bug6.title",
+    whatKey: "bug6.what",
+    screenKey: "bug6.screen",
     steps: 6,
     run: async (api) => {
-      await api.goto("/", "Open the storefront");
+      const { t } = api;
+      await api.goto("/", t("step.openShop"));
       await api.waitFor('[data-chaos="product"]');
 
-      api.step("Fill the basket with many line items");
+      api.step(t("bug6.fill"));
       const count = Math.min(document.querySelectorAll('[data-chaos="add-to-cart"]').length, 8);
       for (let round = 1; round <= 3; round++) {
         for (let i = 0; i < count; i++) {
           api.throwIfCancelled();
-          await api.clickNth('[data-chaos="add-to-cart"]', i, `Add product ${i + 1} (pass ${round}/3)`);
+          await api.clickNth('[data-chaos="add-to-cart"]', i, t("bug6.addNth", { n: i + 1, round }));
         }
       }
-      api.log("info", `Basket now spans ${count} products × 3 passes.`);
+      api.log("info", t("bug6.basket", { count }));
 
-      await api.goto("/cart", "Open the cart");
-      await api.click('[data-chaos="to-checkout"]', "Proceed to checkout");
+      await api.goto("/cart", t("step.openCart"));
+      await api.click('[data-chaos="to-checkout"]', t("step.checkout"));
       const shown = Number((await api.read('[data-chaos="client-total"]', "data-total")) ?? "NaN");
-      await api.click('[data-chaos="place-order"]', "Place the order");
+      await api.click('[data-chaos="place-order"]', t("bug6.place"));
       await api.waitFor('[data-chaos="order-result"]', 25000);
       const charged = await serverTotal(api);
 
@@ -321,145 +337,137 @@ export const scenarios: Scenario[] = [
           ok: true,
           text:
             diff > 0.0001
-              ? `The page showed ${money(shown)} but the server charged ${money(charged)} — off by ${(diff * 100).toFixed(4)} cents.`
-              : `Page ${money(shown)} vs server ${money(charged)} — no visible drift on this basket. Add more odd-priced items and re-run.`,
+              ? t("bug6.drift", {
+                  shown: money(shown),
+                  charged: money(charged),
+                  cents: (diff * 100).toFixed(4),
+                })
+              : t("bug6.noDrift", { shown: money(shown), charged: money(charged) }),
         };
       }
-      return { ok: true, text: "Order placed — compare the two totals in the result panel." };
+      return { ok: true, text: t("bug6.fallback") };
     },
   },
 
   {
     id: "invalid-quantity",
     num: 7,
-    title: "Negative quantity is accepted",
-    what: "Quantity is never validated, so a negative number subtracts a negative — the checkout ADDS stock back and skews the total.",
-    onScreen: "Types −2 straight into the cart's quantity box and checks out. Nothing rejects it.",
+    titleKey: "bug7.title",
+    whatKey: "bug7.what",
+    screenKey: "bug7.screen",
     steps: 6,
     run: async (api) => {
+      const { t } = api;
       await addFirstProduct(api);
-      await api.goto("/cart", "Open the cart");
+      await api.goto("/cart", t("step.openCart"));
       const before = await api.read('[data-chaos="qty-input"]', "value");
-      api.log("info", `Quantity box currently reads ${before}.`);
-      await api.fill('[data-chaos="qty-input"]', "-2", "Type a NEGATIVE quantity: −2");
-      await api.click('[data-chaos="to-checkout"]', "Proceed to checkout");
-      await api.click('[data-chaos="place-order"]', "Place the order anyway");
+      api.log("info", t("bug7.before", { qty: before ?? "?" }));
+      await api.fill('[data-chaos="qty-input"]', "-2", t("bug7.setQty"));
+      await api.click('[data-chaos="to-checkout"]', t("step.checkout"));
+      await api.click('[data-chaos="place-order"]', t("bug7.place"));
       await api.waitFor('[data-chaos="order-result"]', 20000);
 
       const ok = (await api.read('[data-chaos="order-result"]', "data-ok")) === "true";
       const total = await serverTotal(api);
       return {
         ok: true,
-        text: ok
-          ? `Accepted a quantity of −2 and returned a total of ${total == null ? "n/a" : money(total)}. Reload the catalog: that product's stock went UP.`
-          : "The checkout threw on the negative quantity — an unhandled 500 rather than a clean validation error.",
+        text: ok ? t("bug7.ok", { total: total == null ? "n/a" : money(total) }) : t("bug7.threw"),
       };
     },
-    headless: async () => {
+    headless: async (t) => {
       const r = await client.mutations.checkout({
         sessionId: getSessionId(),
         items: [{ productId: "does-not-exist", quantity: 1 }],
       });
-      return r.errors?.length ? `Failed as expected: ${r.errors[0].message}` : "Unexpectedly succeeded.";
+      return r.errors?.length ? t("bug7.threw") : t("bug7.ok", { total: "n/a" });
     },
   },
 
   {
     id: "shipping-timeout",
     num: 8,
-    title: "Lambda dies on the shipping quote",
-    what: "The live carrier quote can take 8s against a 6s Lambda timeout — the function is killed mid-flight with no cleanup.",
-    onScreen: 'Ticks the real "Express shipping — live carrier quote" option at checkout, then places the order and waits for it to die.',
+    titleKey: "bug8.title",
+    whatKey: "bug8.what",
+    screenKey: "bug8.screen",
     steps: 6,
     run: async (api) => {
+      const { t } = api;
       await toCheckoutWithOneItem(api);
-      await api.click('[data-chaos="express-shipping"]', "Tick Express shipping (live carrier quote)");
-      await api.click('[data-chaos="place-order"]', "Place the order and wait out the carrier call");
+      await api.click('[data-chaos="express-shipping"]', t("bug8.tick"));
+      await api.click('[data-chaos="place-order"]', t("bug8.place"));
       await api.waitFor('[data-chaos="order-result"]', 30000);
       const ok = (await api.read('[data-chaos="order-result"]', "data-ok")) === "true";
-      return {
-        ok: true,
-        text: ok
-          ? "The quote came back inside the timeout this time — re-run it, the delay is randomised up to 8s."
-          : "The Lambda was killed mid-checkout. The customer just sees a failure, and any partial work is left behind.",
-      };
+      return { ok: true, text: ok ? t("bug8.survived") : t("bug8.died") };
     },
-    headless: async () => {
-      const res = await client.queries.getCatalog({});
-      const p = (res.data as { items?: { id: string }[] } | null)?.items?.[0];
-      if (!p) return "No product loaded yet.";
+    headless: async (t) => {
+      const p = await firstProduct();
+      if (!p) return t("headless.noProduct");
       const r = await client.mutations.checkout({
         sessionId: getSessionId(),
         items: [{ productId: p.id, quantity: 1 }],
         simulateSlowShipping: true,
       });
-      return r.errors?.length ? `Timed out as expected: ${r.errors[0].message}` : "Unexpectedly succeeded.";
+      return r.errors?.length ? t("bug8.died") : t("bug8.survived");
     },
   },
 
   {
     id: "expired-session",
     num: 9,
-    title: "Session expires mid-checkout",
-    what: "An expired token is not distinguished from never having signed in — the customer is bounced with a generic Unauthorized.",
-    onScreen: 'Uses the checkout\'s "Expire my session" control (what a real idle timeout would do), then tries to pay.',
+    titleKey: "bug9.title",
+    whatKey: "bug9.what",
+    screenKey: "bug9.screen",
     steps: 6,
     run: async (api) => {
+      const { t } = api;
       await toCheckoutWithOneItem(api);
-      await api.click('[data-chaos="expire-session"]', "Let the session go stale");
-      await api.click('[data-chaos="place-order"]', "Try to pay with the stale session");
+      await api.click('[data-chaos="expire-session"]', t("bug9.expire"));
+      await api.click('[data-chaos="place-order"]', t("bug9.place"));
       await api.waitFor('[data-chaos="order-result"]', 20000);
       const ok = (await api.read('[data-chaos="order-result"]', "data-ok")) === "true";
-      return {
-        ok: true,
-        text: ok
-          ? "Checkout unexpectedly succeeded with a stale session."
-          : "Generic Unauthorized, no refresh attempt, and no 'your cart is saved' path — the customer loses their place.",
-      };
+      return { ok: true, text: ok ? t("bug9.ok") : t("bug9.failed") };
     },
-    headless: async () => {
-      const res = await client.queries.getCatalog({});
-      const p = (res.data as { items?: { id: string }[] } | null)?.items?.[0];
-      if (!p) return "No product loaded yet.";
+    headless: async (t) => {
+      const p = await firstProduct();
+      if (!p) return t("headless.noProduct");
       const r = await client.mutations.checkout({
         sessionId: getSessionId(),
         items: [{ productId: p.id, quantity: 1 }],
         simulateExpiredToken: true,
       });
-      return r.errors?.length ? `Unauthorized as expected: ${r.errors[0].message}` : "Unexpectedly succeeded.";
+      return r.errors?.length ? t("bug9.failed") : t("bug9.ok");
     },
   },
 
   {
     id: "n-plus-one",
     num: 10,
-    title: "N+1 query behind the catalog",
-    what: "The catalog Lambda scans all products, then does a separate GetItem per product for its rating.",
-    onScreen: "Reloads the storefront from the server a few times so the fan-out is visible in CloudWatch and in the load time.",
+    titleKey: "bug10.title",
+    whatKey: "bug10.what",
+    screenKey: "bug10.screen",
     steps: 5,
     run: async (api) => {
-      await api.goto("/", "Open the storefront");
+      const { t } = api;
+      await api.goto("/", t("step.openShop"));
       await api.waitFor('[data-chaos="product"]');
       const timings: number[] = [];
       for (let i = 1; i <= 3; i++) {
         api.throwIfCancelled();
         const t0 = performance.now();
-        await api.click('[data-chaos="reload-catalog"]', `Reload the catalog (${i}/3)`);
+        await api.click('[data-chaos="reload-catalog"]', t("bug10.reload", { i }));
         await api.pause(200);
         await api.waitFor('[data-chaos="product"]', 20000);
         timings.push(performance.now() - t0);
       }
       const products = document.querySelectorAll('[data-chaos="product"]').length;
       const avg = timings.reduce((a, b) => a + b, 0) / timings.length;
-      return {
-        ok: true,
-        text: `${products} products, average round-trip ${avg.toFixed(0)}ms — each reload is 1 Scan + ${products} separate rating GetItem calls.`,
-      };
+      return { ok: true, text: t("bug10.result", { products, ms: avg.toFixed(0) }) };
     },
-    headless: async () => {
+    headless: async (t) => {
+      const started = performance.now();
       const res = await client.queries.getCatalog({});
-      const count = (res.data as { items?: unknown[] } | null)?.items?.length ?? 0;
-      return `Reloaded ${count} products — check CloudWatch for ${count} separate rating GetItem calls.`;
+      const products = (res.data as { items?: unknown[] } | null)?.items?.length ?? 0;
+      return t("bug10.result", { products, ms: (performance.now() - started).toFixed(0) });
     },
   },
 ];

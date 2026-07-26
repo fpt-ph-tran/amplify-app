@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Image from "next/image";
 import { client, addToCart } from "@/lib/client";
+import { useT } from "@/lib/i18n";
 
 interface Product {
   id: string;
@@ -15,6 +16,7 @@ interface Product {
 }
 
 export default function CatalogPage() {
+  const t = useT();
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -46,15 +48,13 @@ export default function CatalogPage() {
     <div className="space-y-8">
       <section className="overflow-hidden rounded-3xl border border-line bg-gradient-to-br from-surface to-elevated p-8 sm:p-10">
         <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-accent">
-          Demo storefront
+          {t("home.eyebrow")}
         </p>
         <h1 className="max-w-2xl text-3xl font-bold tracking-tight sm:text-4xl">
-          Everything here works. That&apos;s the problem.
+          {t("home.title")}
         </h1>
         <p className="mt-3 max-w-xl text-sm leading-relaxed text-muted">
-          Shop normally and you will hit real production bugs — oversold stock, duplicate charges,
-          prices that change depending on the order you type coupons in. Each one is genuine backend
-          code, and each failure is shipped to Cowork Local.
+          {t("home.subtitle")}
         </p>
         <div className="mt-6 flex flex-wrap items-center gap-3">
           <button
@@ -66,11 +66,11 @@ export default function CatalogPage() {
             <span className={loading ? "animate-spin" : ""} aria-hidden>
               ⟳
             </span>
-            {loading ? "Loading catalog…" : "Reload catalog"}
+            {loading ? t("home.reloading") : t("home.reload")}
           </button>
           {lastLoadMs != null && (
             <span className="text-xs text-faint">
-              last load {lastLoadMs.toFixed(0)}ms · 1 Scan + {products.length} rating lookups
+              {t("home.lastLoad", { ms: lastLoadMs.toFixed(0), count: products.length })}
             </span>
           )}
         </div>
@@ -78,14 +78,14 @@ export default function CatalogPage() {
 
       {error && (
         <div className="rounded-2xl border border-danger/30 bg-danger-soft px-4 py-3 text-sm text-danger">
-          Failed to load catalog: {error}
+          {t("home.loadFailed", { error })}
         </div>
       )}
 
       {oversold.length > 0 && (
         <div className="rise rounded-2xl border border-danger/30 bg-danger-soft px-4 py-3 text-sm text-danger">
-          <strong className="font-semibold">Negative stock detected</strong> on{" "}
-          {oversold.map((p) => p.name).join(", ")} — that is bug #1, sold past zero.
+          <strong className="font-semibold">{t("home.oversoldTitle")}</strong>{" "}
+          {t("home.oversoldBody", { names: oversold.map((p) => p.name).join(", ") })}
         </div>
       )}
 
@@ -132,15 +132,15 @@ export default function CatalogPage() {
                     <div className="absolute left-3 top-3 flex gap-2">
                       {p.stock < 0 ? (
                         <span className="rounded-full bg-danger px-2.5 py-1 text-[11px] font-bold text-white">
-                          {p.stock} oversold
+                          {t("home.badge.oversold", { stock: p.stock })}
                         </span>
                       ) : p.stock === 0 ? (
                         <span className="rounded-full bg-elevated px-2.5 py-1 text-[11px] font-semibold text-muted">
-                          Sold out
+                          {t("home.badge.soldOut")}
                         </span>
                       ) : p.stock <= 3 ? (
                         <span className="rounded-full bg-warning-soft px-2.5 py-1 text-[11px] font-semibold text-warning">
-                          Only {p.stock} left
+                          {t("home.badge.onlyLeft", { stock: p.stock })}
                         </span>
                       ) : null}
                     </div>
@@ -159,7 +159,7 @@ export default function CatalogPage() {
                     <div className="mt-1 flex items-baseline justify-between">
                       <span className="text-xl font-bold tracking-tight">${p.price.toFixed(2)}</span>
                       <span className={`text-xs ${out ? "text-danger" : "text-faint"}`}>
-                        {p.stock} in stock
+                        {t("home.inStock", { stock: p.stock })}
                       </span>
                     </div>
                     <button
@@ -172,7 +172,7 @@ export default function CatalogPage() {
                       }}
                       className="mt-2 rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-accent-fg transition hover:bg-accent-hover"
                     >
-                      {added === p.id ? "Added ✓" : "Add to cart"}
+                      {added === p.id ? t("home.added") : t("home.addToCart")}
                     </button>
                   </div>
                 </article>
@@ -182,8 +182,7 @@ export default function CatalogPage() {
 
       {!loading && products.length === 0 && !error && (
         <p className="rounded-2xl border border-line bg-surface px-4 py-8 text-center text-sm text-muted">
-          No products yet — run <code className="font-mono text-xs">npx tsx scripts/seed.ts</code> to
-          populate the catalog.
+          {t("home.empty", { command: "npx tsx scripts/seed.ts" })}
         </p>
       )}
     </div>
